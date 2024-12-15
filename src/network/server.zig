@@ -14,24 +14,26 @@ pub const NetworkInterface = struct {
 
     const Self = @This();
 
-    pub fn create(port: u16) Self {
+    pub fn create(port: u16) !Self {
         const addr = net.Address.initIp4(.{ 127, 0, 0, 1 }, port);
         const server = try addr.listen(.{});
         return Self{ .port = port, .active_conn = atomic.Value(u32).init(0), .server = server };
     }
 
-    pub fn start(self: *Self, alloc: Allocator) void {
+    pub fn start(self: *Self) !void {
         while (true) {
             const conn = try self.server.accept();
-            self.active_conn.rmw(AtomicRmwOp.Add, 1, .{});
-            Thread.spawn(.{}, handle_conn, .{ conn, alloc });
+            _ = self.active_conn.rmw(AtomicRmwOp.Add, 1, .acq_rel);
+            const t = try Thread.spawn(.{}, handle_conn, .{conn});
+            t.detach();
         }
         return;
     }
 
-    fn handle_conn(conn: net.Server.Connection, alloc: Allocator) void {
-        const buf = ArrayList(u8).init(alloc);
-        const s = http.Server.init(conn, buf);
+    fn handle_conn(conn: net.Server.Connection) !void {
+        var buf: [65536]u8 = [_]u8{0} ** 65536;
+        const slice = buf[0..];
+        var s = http.Server.init(conn, slice);
         const rq = try s.receiveHead();
         switch (rq.head.method) {
             .GET => {

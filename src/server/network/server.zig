@@ -1,6 +1,5 @@
 const std = @import("std");
 const net = std.net;
-const http = std.http;
 const Thread = std.Thread;
 const atomic = std.atomic;
 const AtomicRmwOp = std.builtin.AtomicRmwOp;
@@ -30,26 +29,17 @@ pub const NetworkInterface = struct {
         return;
     }
 
-    fn handle_conn(conn: net.Server.Connection) !void {
-        var buf: [65536]u8 = [_]u8{0} ** 65536;
-        const slice = buf[0..];
-        var s = http.Server.init(conn, slice);
-        const rq = try s.receiveHead();
-        switch (rq.head.method) {
-            .GET => {
-                std.debug.print("recieved GET request", .{});
-            },
-            .PUT => {
-                std.debug.print("recieved PUT request", .{});
-            },
-            .DELETE => {
-                std.debug.print("recieved DELETE request", .{});
-            },
-            .POST => {
-                std.debug.print("recieved POST request", .{});
-            },
-
-            else => {},
-        }
-    }
+    // uses the following protocol:
+    // packet: header | payload
+    // -----------------------------------------------
+    // 4 bytes: "HEAD"
+    // 4 bytes: len - 4
+    // 4 bytes: checksum
+    // 3 bytes: flags
+    // 3 bytes: version
+    // 1 byte: status
+    // 1 byte: Request type
+    // 4 bytes: "BODY"
+    // len - 24 byte payload: encoded data
+    fn handle_conn(conn: net.Server.Connection) !void {}
 };

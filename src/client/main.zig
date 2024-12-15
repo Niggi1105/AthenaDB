@@ -1,4 +1,4 @@
 const std = @import("std");
-pub fn main() !void {
-    std.debug.print("Hello from client\r\n", .{});
-}
+const net = std.net;
+
+pub fn main() !void {}

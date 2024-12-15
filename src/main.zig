@@ -2,8 +2,11 @@ const std = @import("std");
 const server = @import("network/server.zig");
 const auth = @import("auth/auth.zig");
 const core = @import("core/core.zig");
+const alloc = std.heap.GeneralPurposeAllocator(.{});
 
-pub fn main() !void {}
+pub fn main() !void {
+    server.NetworkInterface.create(h)
+}
 
 test "simple test" {
     var list = std.ArrayList(i32).init(std.testing.allocator);

@@ -42,6 +42,13 @@ pub const NetworkInterface = struct {
             .PUT => {
                 std.debug.print("recieved PUT request", .{});
             },
+            .DELETE => {
+                std.debug.print("recieved DELETE request", .{});
+            },
+            .POST => {
+                std.debug.print("recieved POST request", .{});
+            },
+
             else => {},
         }
     }

@@ -5,19 +5,17 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const server_exe = b.addExecutable(.{
-        .name = "AthenaDBServer",
-        .root_source_file = b.path("src/server/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const server_exe = b.addExecutable(.{ .name = "AthenaDBServer", .root_source_file = b.path("src/server/main.zig"), .target = target, .optimize = optimize, .version = .{
+        .major = 0,
+        .minor = 0,
+        .patch = 1,
+    } });
 
-    const client_exe = b.addExecutable(.{
-        .name = "AthenaDBClient",
-        .root_source_file = b.path("src/client/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const client_exe = b.addExecutable(.{ .name = "AthenaDBClient", .root_source_file = b.path("src/client/main.zig"), .target = target, .optimize = optimize, .version = .{
+        .major = 0,
+        .minor = 0,
+        .patch = 1,
+    } });
 
     b.installArtifact(server_exe);
 

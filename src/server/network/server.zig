@@ -29,17 +29,5 @@ pub const NetworkInterface = struct {
         return;
     }
 
-    // uses the following protocol:
-    // packet: header | payload
-    // -----------------------------------------------
-    // 4 bytes: "HEAD"
-    // 4 bytes: len - 4
-    // 4 bytes: checksum
-    // 3 bytes: flags
-    // 3 bytes: version
-    // 1 byte: status
-    // 1 byte: Request type
-    // 4 bytes: "BODY"
-    // len - 24 byte payload: encoded data
     fn handle_conn(conn: net.Server.Connection) !void {}
 };

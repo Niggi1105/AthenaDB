@@ -8,4 +8,6 @@ pub fn main() !void {
     try ni.start();
 }
 
-test "simple test" {}
+test {
+    std.testing.refAllDecls(@This());
+}

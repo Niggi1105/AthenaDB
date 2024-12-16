@@ -29,5 +29,7 @@ pub const NetworkInterface = struct {
         return;
     }
 
-    fn handle_conn(conn: net.Server.Connection) !void {}
+    fn handle_conn(conn: net.Server.Connection) !void {
+        _ = conn;
+    }
 };

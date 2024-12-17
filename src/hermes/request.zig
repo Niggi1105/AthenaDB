@@ -36,15 +36,17 @@ pub const Request = struct {
     len: u32,
     data: []u8,
 
+    alloc: Allocator,
+
     const Self = @This();
 
     fn bare(alloc: Allocator, obj: anytype, request: RequestCode, db_id: u64, flags: RequestFlags) !Self {
         if (obj == null) {
             const tmp = try alloc.alloc(u8, 0);
-            return .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = 0, .data = tmp };
+            return .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = 0, .data = tmp, .alloc = alloc };
         }
         const data = try json.stringifyAlloc(alloc, obj, .{});
-        return .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = @intCast(data.len), .data = data };
+        return .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = @intCast(data.len), .data = data, .alloc = alloc };
     }
 
     pub fn get(alloc: Allocator, filter: anytype, db_id: u64, flags: RequestFlags) !Self {
@@ -85,7 +87,7 @@ pub const Request = struct {
 
         std.debug.assert(data.len == jsobj.len + jsflt.len);
 
-        return .{ .version = version, .request = .UPDATE, .db_id = db_id, .flags = flags, .len = @intCast(data.len), .data = data };
+        return .{ .version = version, .request = .UPDATE, .db_id = db_id, .flags = flags, .len = @intCast(data.len), .data = data, .alloc = alloc };
     }
 
     pub fn delete(alloc: Allocator, filter: anytype, db_id: u64, flags: RequestFlags) !Self {
@@ -97,23 +99,24 @@ pub const Request = struct {
         return Self.bare(alloc, obj, .PING, db_id, flags);
     }
 
-    pub fn list_dbs(flags: RequestFlags) Self {
-        return Self{ .request = .LISTDBS, .data = .{}, .len = 0, .flags = flags, .version = version, .db_id = 0 };
+    pub fn list_dbs(alloc: Allocator, flags: RequestFlags) Self {
+        return Self.bare(alloc, null, .LISTDBS, 0, flags);
     }
-    pub fn delete_db(db_id: u64, flags: RequestFlags) Self {
-        return Self{ .request = .DELETEDB, .data = .{}, .len = 0, .flags = flags, .version = version, .db_id = db_id };
-    }
-
-    pub fn new_db(db_id: u64, name: []u8, flags: RequestFlags) Self {
-        return Self{ .request = .NEWDB, .data = name, .len = name.len, .flags = flags, .version = version, .db_id = db_id };
+    pub fn delete_db(alloc: Allocator, db_id: u64, flags: RequestFlags) Self {
+        return Self.bare(alloc, null, .DELETEDB, db_id, flags);
     }
 
-    pub fn disconnect(flags: RequestFlags) Self {
-        return Self{ .request = .DISCONNECT, .data = .{}, .len = 0, .flags = flags, .version = version, .db_id = 0 };
+    ///name must have been allocated with alloc
+    pub fn new_db(alloc: Allocator, db_id: u64, name: []u8, flags: RequestFlags) Self {
+        return Self{ .request = .NEWDB, .data = name, .len = name.len, .flags = flags, .version = version, .db_id = db_id, .alloc = alloc };
     }
 
-    pub fn connect(flags: RequestFlags) Self {
-        return Self{ .request = .CONNECT, .data = .{}, .len = 0, .flags = flags, .version = version, .db_id = 0 };
+    pub fn disconnect(alloc: Allocator, flags: RequestFlags) Self {
+        return Self.bare(alloc, null, .DISCONNECT, 0, flags);
+    }
+
+    pub fn connect(alloc: Allocator, flags: RequestFlags) Self {
+        return Self.bare(alloc, null, .CONNECT, 0, flags);
     }
 
     pub fn encode(self: *Self, alloc: Allocator) ![]u8 {
@@ -135,6 +138,10 @@ pub const Request = struct {
         try writer.writeInt(u32, self.len, .little);
         try writer.writeAll(self.data);
     }
+
+    pub fn deinit(self: *Self) void {
+        self.alloc.free(self.data);
+    }
 };
 
 test "test write_to_writer" {
@@ -144,6 +151,7 @@ test "test write_to_writer" {
     var l = std.ArrayList(u8).init(alloc);
     const w = l.writer();
     try rq.write_to_writer(w);
+    defer rq.deinit();
     const r = try l.toOwnedSlice();
     defer alloc.free(r);
 
@@ -153,18 +161,44 @@ test "test write_to_writer" {
     try std.testing.expectEqualSlices(u8, tmp[0..], r);
 }
 
-test "test write_to_writer_2" {
+test "test encode 1" {
     const alloc = std.testing.allocator;
 
     var rq = try Request.ping(alloc, null, 255, .{ .keepalive = true });
-    var l = std.ArrayList(u8).init(alloc);
-    const w = l.writer();
-    try rq.write_to_writer(w);
-    const r = try l.toOwnedSlice();
+    defer rq.deinit();
+    const r = try rq.encode(alloc);
     defer alloc.free(r);
 
     var tmp = &[_]u8{ 0, 0, 1, 0, 0xFF, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
 
     try std.testing.expectEqual(r.len, tmp.len);
     try std.testing.expectEqualSlices(u8, tmp[0..], r);
+}
+
+test "test encode 2" {
+    const alloc = std.testing.allocator;
+
+    const MyStruct = struct {
+        name: []const u8,
+        age: u8,
+    };
+    const p: ?MyStruct = MyStruct{ .age = 16, .name = "Max Mustermann" };
+
+    var rq = try Request.get(alloc, p, 255, .{ .keepalive = true });
+    defer rq.deinit();
+    const r = try rq.encode(alloc);
+    defer alloc.free(r);
+
+    //header
+    const header = [20]u8{ 0, 0, 1, 1, 0xFF, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0x22, 0, 0, 0 };
+    //body
+    var bd = std.ArrayList(u8).init(alloc);
+    try bd.appendSlice(&header);
+    try bd.appendSlice("{\"name\":\"Max Mustermann\",\"age\":16}");
+    const res = try bd.toOwnedSlice();
+
+    defer alloc.free(res);
+
+    try std.testing.expectEqual(r.len, res.len);
+    try std.testing.expectEqualSlices(u8, res, r);
 }

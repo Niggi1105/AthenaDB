@@ -26,12 +26,17 @@ pub const RequestCode = enum(u8) {
     //SINGOUT = 6,
 };
 
-pub const Request = struct {
+pub const RequestHeader = packed struct {
     version: Version,
     request: RequestCode,
     db_id: u64, //unique identifier for db
     flags: RequestFlags,
     len: u32,
+    _padding: u96 = 0,
+};
+
+pub const Request = struct {
+    header: RequestHeader,
     data: []u8,
 
     alloc: Allocator,
@@ -41,10 +46,10 @@ pub const Request = struct {
     fn bare(alloc: Allocator, obj: anytype, request: RequestCode, db_id: u64, flags: RequestFlags) !Self {
         if (obj == null) {
             const tmp = try alloc.alloc(u8, 0);
-            return .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = 0, .data = tmp, .alloc = alloc };
+            return .{ .header = .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = 0 }, .data = tmp, .alloc = alloc };
         }
         const data = try json.stringifyAlloc(alloc, obj, .{});
-        return .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = @intCast(data.len), .data = data, .alloc = alloc };
+        return .{ .header = .{ .version = version, .request = request, .db_id = db_id, .flags = flags, .len = @intCast(data.len) }, .data = data, .alloc = alloc };
     }
 
     pub fn get(alloc: Allocator, filter: anytype, db_id: u64, flags: RequestFlags) !Self {
@@ -85,7 +90,7 @@ pub const Request = struct {
 
         std.debug.assert(data.len == jsobj.len + jsflt.len);
 
-        return .{ .version = version, .request = .UPDATE, .db_id = db_id, .flags = flags, .len = @intCast(data.len), .data = data, .alloc = alloc };
+        return .{ .header = .{ .version = version, .request = .UPDATE, .db_id = db_id, .flags = flags, .len = @intCast(data.len) }, .data = data, .alloc = alloc };
     }
 
     pub fn delete(alloc: Allocator, filter: anytype, db_id: u64, flags: RequestFlags) !Self {
@@ -120,25 +125,33 @@ pub const Request = struct {
     pub fn encode(self: *Self, alloc: Allocator) ![]u8 {
         var tmp = std.ArrayList(u8).init(alloc);
         defer tmp.deinit();
+
         const w = tmp.writer();
         try self.write_to_writer(w);
+
         return try tmp.toOwnedSlice();
     }
 
     ///make sure to drop the request after this
     pub fn write_to_writer(self: *Self, writer: anytype) !void {
-        try writer.writeInt(u8, self.version.major, .little);
-        try writer.writeInt(u8, self.version.minor, .little);
-        try writer.writeInt(u8, self.version.patch, .little);
-        try writer.writeInt(u8, @intFromEnum(self.request), .little);
-        try writer.writeInt(u64, self.db_id, .little);
-        try writer.writeStruct(self.flags);
-        try writer.writeInt(u32, self.len, .little);
+        try writer.writeStruct(self.header);
         try writer.writeAll(self.data);
     }
 
     pub fn deinit(self: *Self) void {
         self.alloc.free(self.data);
+    }
+
+    pub fn from_reader(alloc: Allocator, reader: anytype) !Self {
+        const header: RequestHeader = try reader.readStruct(RequestHeader);
+        const buf = try alloc.alloc(u8, @intCast(header.len));
+
+        const n = try reader.readAll(buf);
+        if (n < buf.len) {
+            return error.;
+        }
+
+        return Self{ .header = header, .data = buf, .alloc = alloc };
     }
 };
 
@@ -153,7 +166,7 @@ test "test write_to_writer" {
     const r = try l.toOwnedSlice();
     defer alloc.free(r);
 
-    var tmp = &[_]u8{ 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
+    var tmp = &[_]u8{ 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
     try std.testing.expectEqual(r.len, tmp.len);
     try std.testing.expectEqualSlices(u8, tmp[0..], r);
@@ -167,7 +180,7 @@ test "test encode 1" {
     const r = try rq.encode(alloc);
     defer alloc.free(r);
 
-    var tmp = &[_]u8{ 0, 0, 1, 0, 0xFF, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0 };
+    var tmp = &[_]u8{ 0, 0, 1, 0, 0xFF, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
     try std.testing.expectEqual(r.len, tmp.len);
     try std.testing.expectEqualSlices(u8, tmp[0..], r);
@@ -188,7 +201,7 @@ test "test encode 2" {
     defer alloc.free(r);
 
     //header
-    const header = [20]u8{ 0, 0, 1, 1, 0xFF, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0x22, 0, 0, 0 };
+    const header = [32]u8{ 0, 0, 1, 1, 0xFF, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0x22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     //body
     var bd = std.ArrayList(u8).init(alloc);
     try bd.appendSlice(&header);

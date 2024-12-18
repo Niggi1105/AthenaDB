@@ -1,6 +1,8 @@
 const std = @import("std");
 const json = std.json;
 const Allocator = std.mem.Allocator;
+const version = @import("common.zig").version;
+const Version = @import("common.zig").Version;
 
 pub const RequestFlags = packed struct {
     keepalive: bool,
@@ -23,10 +25,6 @@ pub const RequestCode = enum(u8) {
     //SINGIN = 5,
     //SINGOUT = 6,
 };
-
-pub const Version = packed struct { major: u8, minor: u8, patch: u8 };
-
-pub const version: Version = .{ .major = 0, .minor = 0, .patch = 1 };
 
 pub const Request = struct {
     version: Version,
@@ -106,9 +104,9 @@ pub const Request = struct {
         return Self.bare(alloc, null, .DELETEDB, db_id, flags);
     }
 
-    ///name must have been allocated with alloc
-    pub fn new_db(alloc: Allocator, db_id: u64, name: []u8, flags: RequestFlags) Self {
-        return Self{ .request = .NEWDB, .data = name, .len = name.len, .flags = flags, .version = version, .db_id = db_id, .alloc = alloc };
+    ///name must be allocated with alloc
+    pub fn new_db(alloc: Allocator, db_id: u64, name: ?[]u8, flags: RequestFlags) Self {
+        return Self.bare(alloc, name, .NEWDB, db_id, flags);
     }
 
     pub fn disconnect(alloc: Allocator, flags: RequestFlags) Self {

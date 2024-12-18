@@ -78,7 +78,7 @@ pub fn build(b: *std.Build) void {
     test_modules_step.dependOn(&run_hermes_unit_tests.step);
 
     const test_all_step = b.step("test", "Run client, server and module unit tests");
-    test_all_step.dependOn(&hermes_unit_tests.step);
-    test_all_step.dependOn(&client_unit_tests.step);
-    test_all_step.dependOn(&server_unit_tests.step);
+    test_all_step.dependOn(&run_hermes_unit_tests.step);
+    test_all_step.dependOn(&run_client_unit_tests.step);
+    test_all_step.dependOn(&run_server_unit_tests.step);
 }

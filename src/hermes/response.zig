@@ -66,6 +66,18 @@ pub const Response = struct {
         try writer.writeAll(self.data);
     }
 
+    pub fn from_reader(alloc: Allocator, reader: anytype) !Self {
+        const header = try reader.readStruct(ResponseHeader);
+        const buf = try alloc.alloc(u8, @intCast(header.len));
+
+        const n = try reader.readAll(buf);
+        if (n < buf.len) {
+            return error.BadRequest;
+        }
+
+        return Self{ .header = header, .data = buf, .alloc = alloc };
+    }
+
     pub fn deinit(self: *const Self) void {
         self.alloc.free(self.data);
     }

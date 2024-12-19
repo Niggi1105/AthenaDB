@@ -81,6 +81,8 @@ pub fn build(b: *std.Build) void {
     //create client and server module to import into integration test
     const client = b.addModule("client", .{ .root_source_file = b.path("src/client/main.zig") });
     const server = b.addModule("server", .{ .root_source_file = b.path("src/server/main.zig") });
+    server.addImport("hermes", hermes);
+    client.addImport("hermes", hermes);
 
     const integration_tests = b.addTest(.{
         .name = "integration tests",
@@ -92,6 +94,7 @@ pub fn build(b: *std.Build) void {
     //make imports visible to integration test
     integration_tests.root_module.addImport("server", server);
     integration_tests.root_module.addImport("client", client);
+    integration_tests.root_module.addImport("hermes", hermes);
 
     const run_integration_tests = b.addRunArtifact(integration_tests);
 

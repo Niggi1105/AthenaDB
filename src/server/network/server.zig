@@ -1,5 +1,7 @@
 const std = @import("std");
-const request = @import("hermes").request;
+const hermes = @import("hermes");
+const request = hermes.request;
+const response = hermes.response;
 const net = std.net;
 const Thread = std.Thread;
 const atomic = std.atomic;
@@ -35,7 +37,10 @@ pub const NetworkInterface = struct {
     fn handle_conn(alloc: Allocator, conn: net.Server.Connection) !void {
         const rq = try request.Request.from_reader(alloc, conn.stream.reader());
         switch (rq.header.request) {
-            .PING => {},
+            .PING => {
+                const rsp = try response.Response.ok(alloc, "PONG");
+                rsp.write_to_writer(conn.stream.writer());
+            },
             .GET => {},
             .STORE => {},
             .UPDATE => {},
@@ -43,8 +48,9 @@ pub const NetworkInterface = struct {
             .NEWDB => {},
             .DELETEDB => {},
             .LISTDBS => {},
-            .CONNECT => {},
-            .DISCONNECT => {},
+            .SHUTDOWN => {
+                std.process.exit(0);
+            },
         }
     }
 };

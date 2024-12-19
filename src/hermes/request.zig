@@ -148,7 +148,7 @@ pub const Request = struct {
 
         const n = try reader.readAll(buf);
         if (n < buf.len) {
-            return error.;
+            return error.BadRequest;
         }
 
         return Self{ .header = header, .data = buf, .alloc = alloc };

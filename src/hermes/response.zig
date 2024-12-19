@@ -13,10 +13,14 @@ pub const ResponseCode = enum(u8) {
     INTERNALSERVERERROR = 5,
 };
 
-pub const Response = struct {
+pub const ResponseHeader = packed struct {
     version: Version,
     status: ResponseCode,
     len: u32,
+};
+
+pub const Response = struct {
+    header: ResponseHeader,
     data: []u8,
 
     alloc: Allocator,
@@ -25,10 +29,10 @@ pub const Response = struct {
 
     fn bare(alloc: Allocator, payload: anytype, status: ResponseCode) !Self {
         if (payload == null) {
-            return Self{ .version = version, .status = status, .len = 0, .data = try alloc.alloc(u8, 0), .alloc = alloc };
+            return Self{ .header = .{ .version = version, .status = status, .len = 0 }, .data = try alloc.alloc(u8, 0), .alloc = alloc };
         }
         const tmp = try std.json.stringifyAlloc(alloc, payload, .{});
-        return Self{ .version = version, .status = status, .len = tmp.len, .data = tmp, .alloc = alloc };
+        return Self{ .header = .{ .version = version, .status = status, .len = tmp.len }, .data = tmp, .alloc = alloc };
     }
 
     pub fn ok(alloc: Allocator, payload: anytype) !Self {
@@ -58,11 +62,7 @@ pub const Response = struct {
     }
 
     pub fn write_to_writer(self: *const Self, writer: anytype) !void {
-        try writer.writeInt(u8, version.major, .little);
-        try writer.writeInt(u8, version.minor, .little);
-        try writer.writeInt(u8, version.patch, .little);
-        try writer.writeInt(u8, @intFromEnum(self.status), .little);
-        try writer.writeInt(u32, self.len, .little);
+        try writer.writeStruct(self.header);
         try writer.writeAll(self.data);
     }
 

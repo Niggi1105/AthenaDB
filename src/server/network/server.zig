@@ -34,6 +34,17 @@ pub const NetworkInterface = struct {
 
     fn handle_conn(alloc: Allocator, conn: net.Server.Connection) !void {
         const rq = try request.Request.from_reader(alloc, conn.stream.reader());
-        switch (rq.header.request) {}
+        switch (rq.header.request) {
+            .PING => {},
+            .GET => {},
+            .STORE => {},
+            .UPDATE => {},
+            .DELETE => {},
+            .NEWDB => {},
+            .DELETEDB => {},
+            .LISTDBS => {},
+            .CONNECT => {},
+            .DISCONNECT => {},
+        }
     }
 };

@@ -42,6 +42,7 @@ pub fn build(b: *std.Build) void {
     run_server_step.dependOn(&run_server_cmd.step);
     run_client_step.dependOn(&run_client_cmd.step);
 
+    //tests
     const server_unit_tests = b.addTest(.{
         .name = "server tests",
         .root_source_file = b.path("src/server/main.zig"),
@@ -65,7 +66,7 @@ pub fn build(b: *std.Build) void {
     test_server_step.dependOn(&run_server_unit_tests.step);
     test_client_step.dependOn(&run_client_unit_tests.step);
 
-    //create test command for all modules
+    //create test command for modules
     const hermes_unit_tests = b.addTest(.{
         .name = "hermes tests",
         .root_source_file = b.path("src/hermes/hermes.zig"),
@@ -77,8 +78,29 @@ pub fn build(b: *std.Build) void {
     const test_modules_step = b.step("test_modules", "Run module unit tests");
     test_modules_step.dependOn(&run_hermes_unit_tests.step);
 
+    //create client and server module to import into integration test
+    const client = b.addModule("client", .{ .root_source_file = b.path("src/client/main.zig") });
+    const server = b.addModule("server", .{ .root_source_file = b.path("src/server/main.zig") });
+
+    const integration_tests = b.addTest(.{
+        .name = "integration tests",
+        .root_source_file = b.path("src/tests/test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    //make imports visible to integration test
+    integration_tests.root_module.addImport("server", server);
+    integration_tests.root_module.addImport("client", client);
+
+    const run_integration_tests = b.addRunArtifact(integration_tests);
+
+    const integration_test_step = b.step("integration_test", "Run integration tests");
+    integration_test_step.dependOn(&run_integration_tests.step);
+
     const test_all_step = b.step("test", "Run client, server and module unit tests");
     test_all_step.dependOn(&run_hermes_unit_tests.step);
     test_all_step.dependOn(&run_client_unit_tests.step);
     test_all_step.dependOn(&run_server_unit_tests.step);
+    test_all_step.dependOn(&run_integration_tests.step);
 }

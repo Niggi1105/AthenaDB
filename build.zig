@@ -30,14 +30,20 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+    //tests
 
+    const hermes_unit_tests = b.addTest(.{
+        .name = "module tests",
+        .root_source_file = b.path("src/hermes/hermes.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const client_unit_tests = b.addTest(.{
         .name = "client tests",
         .root_source_file = b.path("src/client/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
-
     const exe_unit_tests = b.addTest(.{
         .name = "server tests",
         .root_source_file = b.path("src/main.zig"),
@@ -49,8 +55,10 @@ pub fn build(b: *std.Build) void {
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const run_client_unit_tests = b.addRunArtifact(client_unit_tests);
+    const run_hermes_unit_tests = b.addRunArtifact(hermes_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
     test_step.dependOn(&run_client_unit_tests.step);
+    test_step.dependOn(&run_hermes_unit_tests.step);
 }

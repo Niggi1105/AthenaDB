@@ -5,6 +5,8 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const hermes = b.addModule("hermes", .{ .root_source_file = b.path("src/hermes/hermes.zig") });
+
     const exe = b.addExecutable(.{
         .name = "AthenaDB",
         .root_source_file = b.path("src/main.zig"),
@@ -12,7 +14,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const client = b.addStaticLibrary(.{ .name = "AthenaClient", .root_source_file = b.path("src/client/lib.zig"), .target = target, .optimize = optimize });
+    client.root_module.addImport("hermes", hermes);
 
+    exe.root_module.addImport("hermes", hermes);
     b.installArtifact(exe);
     b.installArtifact(client);
 
@@ -40,6 +44,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    client_unit_tests.root_module.addImport("hermes", hermes);
+    exe_unit_tests.root_module.addImport("hermes", hermes);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const run_client_unit_tests = b.addRunArtifact(client_unit_tests);

@@ -53,6 +53,13 @@ pub const Response = struct {
     pub fn internal_error(alloc: Allocator) Self {
         return Self.no_body(alloc, .InternalError);
     }
+    pub fn from_reader(alloc: Allocator, reader: anytype) !Self {
+        const header: ResponseHeader = try reader.readStruct(ResponseHeader);
+        const buf = try alloc.alloc(u8, @intCast(header.len));
+        const n = try reader.readAll(buf);
+        std.debug.assert(n == buf.len);
+        return Self{ .header = header, .body = buf, .alloc = alloc };
+    }
 
     pub fn serialize(self: *const Self) ![]u8 {
         var tmp = std.ArrayList(u8).init(self.alloc);

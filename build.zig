@@ -34,6 +34,9 @@ pub fn build(b: *std.Build) void {
     //tests
     const client_mod = b.addModule("client module", .{ .root_source_file = b.path("src/client/lib.zig") });
     const server_mod = b.addModule("server module", .{ .root_source_file = b.path("src/server/main.zig") });
+    client_mod.addImport("hermes", hermes);
+    server_mod.addImport("hermes", hermes);
+
     const integration_tests = b.addTest(.{
         .name = "integration tests",
         .root_source_file = b.path("src/test/test.zig"),

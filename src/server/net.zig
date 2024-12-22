@@ -9,29 +9,27 @@ const Pool = std.Thread.Pool;
 pub const NetworkInterface = struct {
     addr: net.Address,
     alloc: Allocator,
-    pool: Pool,
 
     const Self = @This();
     pub fn init(alloc: Allocator, addr: net.Address) !Self {
-        var pool: Pool = undefined;
-        try Pool.init(&pool, .{ .allocator = alloc });
-        return Self{ .addr = addr, .alloc = alloc, .pool = pool };
+        return Self{ .addr = addr, .alloc = alloc };
     }
     pub fn start(self: *Self) !void {
+        var pool: Pool = undefined;
+        try Pool.init(&pool, .{ .allocator = self.alloc });
         log.info("starting network interface...", .{});
-        var wait_group: WaitGroup = undefined;
-        wait_group.reset();
-        while (self.addr.listen(.{})) |server| {
-            try self.pool.spawn(handle_request, .{ &wait_group, server });
+
+        var server = try self.addr.listen(.{});
+
+        while (server.accept()) |conn| {
+            log.info("accepted connection from: {}...", .{conn.address});
+            try pool.spawn(handle_request, .{conn});
         } else |err| {
-            log.err("can't listen to addr: {}", .{err});
+            log.err("can't accept connection: {}", .{err});
         }
-        self.pool.waitAndWork(&wait_group);
     }
-    fn handle_request(wait_group: *WaitGroup, server: std.net.Server) void {
-        wait_group.start();
-        defer wait_group.finish();
-        _ = server;
+    fn handle_request(conn: std.net.Server.Connection) void {
+        _ = conn;
     }
     pub fn deinit(self: Self) void {
         self.pool.deinit();

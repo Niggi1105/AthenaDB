@@ -15,7 +15,7 @@ pub const RequestMethod = enum(u8) {
 
 //32 bytes
 pub const RequestHeader = packed struct {
-    version: version.Version, //3 bytes
+    version: version.Version = version.version, //3 bytes
     method: RequestMethod, //1 byte
     db_id: u64, // 8 bytes
     coll_id: u64, // 8 bytes
@@ -34,12 +34,12 @@ pub const Request = struct {
     fn bare(alloc: Allocator, obj: anytype, db_id: u64, coll_id: u64, method: RequestMethod) !Self {
         if (@TypeOf(obj) == []u8) {
             if (obj.len == 0) {
-                const header = RequestHeader{ .version = version.version, .method = method, .db_id = db_id, .coll_id = coll_id, .len = 0 };
+                const header = RequestHeader{ .method = method, .db_id = db_id, .coll_id = coll_id, .len = 0 };
                 return Self{ .header = header, .body = obj, .alloc = alloc };
             }
         }
         const tmp = try std.json.stringifyAlloc(alloc, obj, .{});
-        const header = RequestHeader{ .version = version.version, .method = method, .db_id = db_id, .coll_id = coll_id, .len = @intCast(tmp.len) };
+        const header = RequestHeader{ .method = method, .db_id = db_id, .coll_id = coll_id, .len = @intCast(tmp.len) };
         return Self{ .header = header, .body = tmp, .alloc = alloc };
     }
     pub fn ping(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
@@ -69,6 +69,7 @@ pub const Request = struct {
     pub fn delete_coll(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
         return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .DeleteColl);
     }
+    ///you still need to call deinit, bc serializes creates a copy
     pub fn serialize(self: *const Self) ![]u8 {
         var tmp = std.ArrayList(u8).init(self.alloc);
         const w = tmp.writer();

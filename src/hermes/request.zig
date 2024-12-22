@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const version = @import("version.zig");
+const version = @import("hermes.zig").version;
 
 pub const RequestMethod = enum(u8) {
     Ping = 0,
@@ -15,7 +15,7 @@ pub const RequestMethod = enum(u8) {
 
 //32 bytes
 pub const RequestHeader = packed struct {
-    version: version.Version = version.version, //3 bytes
+    version: @TypeOf(version) = version, //3 bytes
     method: RequestMethod, //1 byte
     db_id: u64, // 8 bytes
     coll_id: u64, // 8 bytes
@@ -68,6 +68,13 @@ pub const Request = struct {
     }
     pub fn delete_coll(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
         return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .DeleteColl);
+    }
+    pub fn from_reader(alloc: Allocator, reader: anytype) !Self {
+        const header: RequestHeader = try reader.readStruct(RequestHeader);
+        const buf = try alloc.alloc(u8, header.len);
+        const n = try reader.readAll(buf);
+        std.debug.assert(n == buf.len);
+        return Self{ .header = header, .body = buf, .alloc = alloc };
     }
     ///you still need to call deinit, bc serializes creates a copy
     pub fn serialize(self: *const Self) ![]u8 {

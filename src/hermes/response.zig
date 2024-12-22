@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const version = @import("version.zig");
+const version = @import("hermes.zig").version;
 
 pub const ResponseCode = enum(u8) {
     Ok = 0,
@@ -9,11 +9,12 @@ pub const ResponseCode = enum(u8) {
     BadRequest = 3,
     OldVersoin = 4,
     PermissionDenied = 5,
+    InternalError = 6,
 };
 
 //8 bytes
 pub const ResponseHeader = packed struct {
-    version: version.Version = version.version, //3 bytes
+    version: @TypeOf(version) = version, //3 bytes
     len: u32, //4 bytes
     code: ResponseCode, //1 byte
 };
@@ -48,6 +49,9 @@ pub const Response = struct {
     }
     pub fn permission_denied(alloc: Allocator) Self {
         return Self.no_body(alloc, .PermissionDenied);
+    }
+    pub fn internal_error(alloc: Allocator) Self {
+        return Self.no_body(alloc, .InternalError);
     }
 
     pub fn serialize(self: *const Self) ![]u8 {

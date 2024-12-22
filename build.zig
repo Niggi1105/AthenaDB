@@ -30,8 +30,16 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
-    //tests
 
+    //tests
+    const client_mod = b.addModule("client module", .{ .root_source_file = b.path("src/client/lib.zig") });
+    const server_mod = b.addModule("server module", .{ .root_source_file = b.path("src/server/main.zig") });
+    const integration_tests = b.addTest(.{
+        .name = "integration tests",
+        .root_source_file = b.path("src/test/test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const hermes_unit_tests = b.addTest(.{
         .name = "module tests",
         .root_source_file = b.path("src/hermes/hermes.zig"),
@@ -52,13 +60,18 @@ pub fn build(b: *std.Build) void {
     });
     client_unit_tests.root_module.addImport("hermes", hermes);
     server_unit_tests.root_module.addImport("hermes", hermes);
+    integration_tests.root_module.addImport("hermes", hermes);
+    integration_tests.root_module.addImport("client", client_mod);
+    integration_tests.root_module.addImport("server", server_mod);
 
     const run_server_unit_tests = b.addRunArtifact(server_unit_tests);
     const run_client_unit_tests = b.addRunArtifact(client_unit_tests);
     const run_hermes_unit_tests = b.addRunArtifact(hermes_unit_tests);
+    const run_integration_tests = b.addRunArtifact(integration_tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_server_unit_tests.step);
     test_step.dependOn(&run_client_unit_tests.step);
     test_step.dependOn(&run_hermes_unit_tests.step);
+    test_step.dependOn(&run_integration_tests.step);
 }

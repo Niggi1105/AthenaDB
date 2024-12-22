@@ -55,10 +55,12 @@ pub const NetworkInterface = struct {
 
     fn serve_request(alloc: Allocator, conn: std.net.Server.Connection) Response {
         const r = conn.stream.reader();
+
         if (Request.from_reader(alloc, r)) |rq| {
             if (!std.meta.eql(rq.header.version, hermes.version)) {
                 return Response.old_version(alloc);
             }
+            log.info("got {} request...", .{rq.header.method});
             return switch (rq.header.method) {
                 .Ping => Response.ok(alloc, "Pong") catch Response.internal_error(alloc),
                 .Get => Response.bad_request(alloc),

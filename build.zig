@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
 
     const hermes = b.addModule("hermes", .{ .root_source_file = b.path("src/hermes/hermes.zig") });
 
-    const exe = b.addServerExecutable(.{
+    const server = b.addExecutable(.{
         .name = "AthenaDB",
         .root_source_file = b.path("src/server/main.zig"),
         .target = target,
@@ -16,11 +16,11 @@ pub fn build(b: *std.Build) void {
     const client = b.addStaticLibrary(.{ .name = "AthenaClient", .root_source_file = b.path("src/client/lib.zig"), .target = target, .optimize = optimize });
     client.root_module.addImport("hermes", hermes);
 
-    exe.root_module.addImport("hermes", hermes);
-    b.installArtifact(exe);
+    server.root_module.addImport("hermes", hermes);
+    b.installArtifact(server);
     b.installArtifact(client);
 
-    const run_cmd = b.addRunArtifact(exe);
+    const run_cmd = b.addRunArtifact(server);
 
     run_cmd.step.dependOn(b.getInstallStep());
 

@@ -9,20 +9,23 @@ pub const RequestMethod = enum(u8) {
     Delete = 3,
     NewDB = 4,
     NewColl = 5,
+    DeleteDB = 6,
+    DeleteColl = 7,
 };
 
-//24 bytes
+//32 bytes
 pub const RequestHeader = packed struct {
     version: version.Version, //3 bytes
     method: RequestMethod, //1 byte
     db_id: u64, // 8 bytes
     coll_id: u64, // 8 bytes
     len: u32, // 4 bytes
+    _padding: u64 = 0, //8 bytes
 };
 
 ///this type is not supposed to be manually constructed. Please use the functions that were provided
 pub const Request = struct {
-    header: RequestHeader, //24 bytes
+    header: RequestHeader, //32 bytes
     body: []u8, //n-bytes
     alloc: Allocator,
 
@@ -47,7 +50,33 @@ pub const Request = struct {
     pub fn get(alloc: Allocator, filter: anytype, db_id: u64, coll_id: u64) !Self {
         return Self.bare(alloc, filter, db_id, coll_id, .Get);
     }
-    pub fn put(alloc: Allocator, key: anytype, value: anytype, db_id: u64, coll_id: u64) !Self {}
+    pub fn put(alloc: Allocator, obj: anytype, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, obj, db_id, coll_id, .Put);
+    }
+    pub fn delete(alloc: Allocator, filter: anytype, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, filter, db_id, coll_id, .Delete);
+    }
+    ///make sure that name was allocated with the passed allocator
+    pub fn new_db(alloc: Allocator, name: []u8, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, name, db_id, coll_id, .NewDB);
+    }
+    pub fn new_coll(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .NewColl);
+    }
+    pub fn delete_db(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .DeleteDB);
+    }
+    pub fn delete_coll(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .DeleteColl);
+    }
+    pub fn serialize(self: *const Self) ![]u8 {
+        var tmp = std.ArrayList(u8).init(self.alloc);
+        const w = tmp.writer();
+        try w.writeStruct(self.header);
+        try w.writeAll(self.body);
+        return tmp.toOwnedSlice();
+    }
+
     pub fn deinit(self: Self) void {
         self.alloc.free(self.body);
     }

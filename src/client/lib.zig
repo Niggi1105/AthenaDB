@@ -18,25 +18,25 @@ pub const Client = struct {
         return Self{ .stream = stream, .alloc = alloc };
     }
 
-    pub fn ping(self: *const Self) !u64 {
+    pub fn ping(self: *const Self) !void {
         const rq = try Request.ping(self.alloc, 0, 0);
         defer rq.deinit();
-        const start = try std.time.Instant.now();
-
         const bytes = try rq.serialize();
+
         defer self.alloc.free(bytes);
         try self.stream.writeAll(bytes);
+
         const r = self.stream.reader();
         const rsp = try Response.from_reader(self.alloc, r);
         defer rsp.deinit();
-        const expect = try Response.ok(self.alloc, "Pong");
 
+        const expect = try Response.ok(self.alloc, "Pong");
         std.debug.assert(std.meta.eql(expect.header, rsp.header));
         std.debug.assert(std.mem.eql(u8, expect.body, rsp.body));
+    }
 
-        const end = try std.time.Instant.now();
-
-        return end.since(start);
+    pub fn disconnect(self: *Self) void {
+        self.stream.close();
     }
 };
 

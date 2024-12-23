@@ -4,8 +4,8 @@ const db = @import("db.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-    var core = db.AthenaCore{};
-    const d = try db.AthenaDB.start(alloc, &core);
+    var sig = std.Thread.ResetEvent{};
+    const d = try db.AthenaDB.start(alloc, &sig);
     _ = d;
 }
 

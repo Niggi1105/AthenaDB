@@ -58,7 +58,7 @@ pub const NetworkInterface = struct {
 
         if (Request.from_reader(alloc, r)) |rq| {
             if (!std.meta.eql(rq.header.version, hermes.version)) {
-                return Response.old_version(alloc);
+                return Response.incompatible(alloc);
             }
             log.info("got {} request...", .{rq.header.method});
             return switch (rq.header.method) {

@@ -20,13 +20,15 @@ pub const Client = struct {
 
     pub fn ping(self: *const Self) !u64 {
         const rq = try Request.ping(self.alloc, 0, 0);
+        defer rq.deinit();
         const start = try std.time.Instant.now();
 
-        try self.stream.writeAll(try rq.serialize());
+        const bytes = try rq.serialize();
+        defer self.alloc.free(bytes);
+        try self.stream.writeAll(bytes);
         const r = self.stream.reader();
         const rsp = try Response.from_reader(self.alloc, r);
-
-        assert(std.meta.eql(Response.ok(self.alloc, "Pong"), rsp));
+        defer rsp.deinit();
 
         const end = try std.time.Instant.now();
 

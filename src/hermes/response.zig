@@ -1,13 +1,14 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const version = @import("hermes.zig").version;
+const Version = @import("hermes.zig").Version;
 
 pub const ResponseCode = enum(u8) {
     Ok = 0,
     DBNotFound = 1,
     CollNotFound = 2,
     BadRequest = 3,
-    OldVersoin = 4,
+    Incompatible = 4,
     PermissionDenied = 5,
     InternalError = 6,
 };
@@ -44,8 +45,8 @@ pub const Response = struct {
     pub fn bad_request(alloc: Allocator) Self {
         return Self.no_body(alloc, .BadRequest);
     }
-    pub fn old_version(alloc: Allocator) Self {
-        return Self.no_body(alloc, .OldVersoin);
+    pub fn incompatible(alloc: Allocator) Self {
+        return Self.no_body(alloc, .Incompatible);
     }
     pub fn permission_denied(alloc: Allocator) Self {
         return Self.no_body(alloc, .PermissionDenied);
@@ -59,6 +60,20 @@ pub const Response = struct {
         const n = try reader.readAll(buf);
         std.debug.assert(n == buf.len);
         return Self{ .header = header, .body = buf, .alloc = alloc };
+    }
+    pub fn deserialize(alloc: Allocator, slice: []u8) !Self {
+        defer alloc.free(slice);
+
+        const v = Version{ .major = slice[0], .minor = slice[1], .patch = slice[2] };
+        const len = std.mem.bytesToValue(u32, slice[3..7]);
+        const code: ResponseCode = @enumFromInt(slice[7]);
+        const header = ResponseHeader{ .version = v, .len = len, .code = code };
+
+        std.debug.assert(slice.len == @as(usize, 8 + len));
+        var body = try alloc.alloc(u8, @intCast(len));
+        @memcpy(body[0..], slice[8..]);
+
+        return Self{ .header = header, .body = body, .alloc = alloc };
     }
 
     pub fn serialize(self: *const Self) ![]u8 {
@@ -75,26 +90,38 @@ pub const Response = struct {
 };
 test "construct ok" {
     const alloc = std.testing.allocator;
-    const rq = try Response.ok(alloc, 255);
-    defer rq.deinit();
+    const rp = try Response.ok(alloc, 255);
+    defer rp.deinit();
     const expect = &[_]u8{ 0x32, 0x35, 0x35 };
-    try std.testing.expectEqualSlices(u8, expect, rq.body);
+    try std.testing.expectEqualSlices(u8, expect, rp.body);
 }
 test "test serialize ok" {
     const alloc = std.testing.allocator;
-    const rq = try Response.ok(alloc, 255);
-    defer rq.deinit();
+    const rp = try Response.ok(alloc, 255);
+    defer rp.deinit();
     const expect = &[_]u8{ 0, 0, 1, 3, 0, 0, 0, 0, 0x32, 0x35, 0x35 };
-    const r = try rq.serialize();
+    const r = try rp.serialize();
     defer alloc.free(r);
     try std.testing.expectEqualSlices(u8, expect, r);
 }
 test "test serialize permission denied" {
     const alloc = std.testing.allocator;
-    const rq = Response.permission_denied(alloc);
-    defer rq.deinit();
+    const rp = Response.permission_denied(alloc);
+    defer rp.deinit();
     const expect = &[_]u8{ 0, 0, 1, 0, 0, 0, 0, 5 };
-    const r = try rq.serialize();
+    const r = try rp.serialize();
     defer alloc.free(r);
     try std.testing.expectEqualSlices(u8, expect, r);
+}
+
+test "test serialize, deserialize ok" {
+    const alloc = std.testing.allocator;
+    const rp = try Response.ok(alloc, "foo");
+    defer rp.deinit();
+
+    const s = try rp.serialize();
+    const r = try Response.deserialize(alloc, s);
+    defer r.deinit();
+
+    try std.testing.expectEqualDeep(rp, r);
 }

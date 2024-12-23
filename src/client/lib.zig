@@ -29,6 +29,10 @@ pub const Client = struct {
         const r = self.stream.reader();
         const rsp = try Response.from_reader(self.alloc, r);
         defer rsp.deinit();
+        const expect = try Response.ok(self.alloc, "Pong");
+
+        std.debug.assert(std.meta.eql(expect.header, rsp.header));
+        std.debug.assert(std.mem.eql(u8, expect.body, rsp.body));
 
         const end = try std.time.Instant.now();
 

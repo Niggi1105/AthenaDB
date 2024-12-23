@@ -33,9 +33,9 @@ pub fn build(b: *std.Build) void {
 
     //tests
     const client_mod = b.addModule("client module", .{ .root_source_file = b.path("src/client/lib.zig") });
-    const server_mod = b.addModule("server module", .{ .root_source_file = b.path("src/server/main.zig") });
+    const db_mod = b.addModule("db module", .{ .root_source_file = b.path("src/server/db.zig") });
     client_mod.addImport("hermes", hermes);
-    server_mod.addImport("hermes", hermes);
+    db_mod.addImport("hermes", hermes);
 
     const integration_tests = b.addTest(.{
         .name = "integration tests",
@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) void {
     server_unit_tests.root_module.addImport("hermes", hermes);
     integration_tests.root_module.addImport("hermes", hermes);
     integration_tests.root_module.addImport("client", client_mod);
-    integration_tests.root_module.addImport("server", server_mod);
+    integration_tests.root_module.addImport("db", db_mod);
 
     const run_server_unit_tests = b.addRunArtifact(server_unit_tests);
     const run_client_unit_tests = b.addRunArtifact(client_unit_tests);

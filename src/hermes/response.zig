@@ -69,7 +69,7 @@ pub const Response = struct {
         const code: ResponseCode = @enumFromInt(slice[7]);
         const header = ResponseHeader{ .version = v, .len = len, .code = code };
 
-        std.debug.assert(slice.len == @as(usize, 8 + len));
+        std.debug.assert(slice.len == 8 + len);
         var body = try alloc.alloc(u8, @intCast(len));
         @memcpy(body[0..], slice[8..]);
 

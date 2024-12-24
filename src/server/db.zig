@@ -8,7 +8,12 @@ pub const AthenaCore = @import("core.zig").AthenaCore;
 
 pub const AthenaDB = struct {
     pub fn start(alloc: Allocator, mark: *std.Thread.ResetEvent) !void {
+        var dir = try std.fs.cwd().makeOpenPath("./db_files/", .{});
+        defer dir.close();
+        var core = AthenaCore{ .alloc = alloc, .mutex = Thread.Mutex{}, .base_dir = dir };
+
         var ni = try net.NetworkInterface.start(alloc, std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 3000));
+
         var pool: Thread.Pool = undefined;
         try Thread.Pool.init(&pool, .{ .allocator = alloc });
         defer pool.deinit();
@@ -22,7 +27,7 @@ pub const AthenaDB = struct {
             if (rq.header.method == .Shutdown) {
                 return;
             } else {
-                try pool.spawn(handle_req, .{ alloc, conn, rq });
+                try pool.spawn(handle_req, .{ conn, rq, &core });
             }
         } else |err| {
             std.log.err("can't accept new connection: {}", .{err});

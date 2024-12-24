@@ -21,9 +21,10 @@ pub const Client = struct {
     pub fn ping(self: *const Self) !void {
         const rq = try Request.ping(self.alloc, 0, 0);
         defer rq.deinit();
-        const bytes = try rq.serialize();
 
+        const bytes = try rq.serialize();
         defer self.alloc.free(bytes);
+
         try self.stream.writeAll(bytes);
 
         const r = self.stream.reader();
@@ -31,11 +32,22 @@ pub const Client = struct {
         defer rsp.deinit();
 
         const expect = try Response.ok(self.alloc, "Pong");
+        defer expect.deinit();
         std.debug.assert(std.meta.eql(expect.header, rsp.header));
         std.debug.assert(std.mem.eql(u8, expect.body, rsp.body));
     }
 
-    pub fn disconnect(self: *Self) void {
+    pub fn shutdown(self: *const Self) !void {
+        const rq = try Request.shutdown(self.alloc, 0, 0);
+        defer rq.deinit();
+
+        const bytes = try rq.serialize();
+        defer self.alloc.free(bytes);
+
+        try self.stream.writeAll(bytes);
+    }
+
+    pub fn disconnect(self: *const Self) void {
         self.stream.close();
     }
 };

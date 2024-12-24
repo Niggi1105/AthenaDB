@@ -11,6 +11,8 @@ pub const RequestMethod = enum(u8) {
     NewColl = 5,
     DeleteDB = 6,
     DeleteColl = 7,
+
+    Shutdown = 8,
 };
 
 //32 bytes
@@ -68,6 +70,9 @@ pub const Request = struct {
     }
     pub fn delete_coll(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
         return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .DeleteColl);
+    }
+    pub fn shutdown(alloc: Allocator, db_id: u64, coll_id: u64) !Self {
+        return Self.bare(alloc, try alloc.alloc(u8, 0), db_id, coll_id, .Shutdown);
     }
     pub fn from_reader(alloc: Allocator, reader: anytype) !Self {
         const header: RequestHeader = try reader.readStruct(RequestHeader);

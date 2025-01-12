@@ -23,6 +23,7 @@ pub const NetworkInterface = struct {
 
     ///blocks until next incomming request
     pub fn next_conn(self: *Self) !std.net.Server.Connection {
+        std.log.info("start listening for connections...", .{});
         return self.server.accept();
     }
 

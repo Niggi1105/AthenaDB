@@ -9,8 +9,10 @@ pub const AthenaCore = @import("core.zig").AthenaCore;
 pub const AthenaDB = struct {
     pub fn start(alloc: Allocator, mark: *std.Thread.ResetEvent) !void {
         var dir = try std.fs.cwd().makeOpenPath("./db_files/", .{});
+        std.log.info("opened db directory...", .{});
         defer dir.close();
         var core = AthenaCore{ .alloc = alloc, .mutex = Thread.Mutex{}, .base_dir = dir };
+        std.log.info("started db core...", .{});
 
         var ni = try net.NetworkInterface.start(alloc, std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 3000));
 

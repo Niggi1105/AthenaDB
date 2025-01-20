@@ -210,7 +210,7 @@ pub const Primitive = enum(u8) {
     }
 };
 
-test "Int Field encode_append_writer-decode" {
+test "Int Field encode-decode" {
     const d = Field{ .Int = 32 };
     const alloc = std.testing.allocator;
 
@@ -224,7 +224,7 @@ test "Int Field encode_append_writer-decode" {
 
     try std.testing.expectEqual(d, dec);
 }
-test "Bool Field encode_append_writer-decode" {
+test "Bool Field encode-decode" {
     const d = Field{ .Bool = true };
     const alloc = std.testing.allocator;
 
@@ -238,7 +238,7 @@ test "Bool Field encode_append_writer-decode" {
 
     try std.testing.expectEqual(d, dec);
 }
-test "Float Field encode_append_writer-decode" {
+test "Float Field encode-decode" {
     const d = Field{ .Float = 3.1415 };
     const alloc = std.testing.allocator;
 
@@ -252,7 +252,7 @@ test "Float Field encode_append_writer-decode" {
 
     try std.testing.expectEqual(d, dec);
 }
-test "Char Field encode_append_writer-decode" {
+test "Char Field encode-decode" {
     const d = Field{ .Char = 3 };
     const alloc = std.testing.allocator;
 
@@ -267,11 +267,10 @@ test "Char Field encode_append_writer-decode" {
     try std.testing.expectEqual(d, dec);
 }
 
-test "Array init deinit" {
+test "int array encode decode" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.Int, alloc, 5);
-    defer arr.deinit();
 
     try arr.append(Field{ .Int = 5 });
     try arr.append(Field{ .Int = 3 });
@@ -284,7 +283,121 @@ test "Array init deinit" {
     try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
 
     var tmp = ArrayList(u8).init(alloc);
-    defer tmp.deinit();
     const n = try f.encode_append_writer(tmp.writer());
     try std.testing.expectEqual(35, n);
+
+    const enc = try tmp.toOwnedSlice();
+    defer alloc.free(enc);
+
+    var dec = try Field.decode(enc, alloc);
+    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
+
+    const d = try dec.Arr.arr.toOwnedSlice();
+    defer alloc.free(d);
+
+    const e = try arr.arr.toOwnedSlice();
+    defer alloc.free(e);
+
+    try std.testing.expectEqualSlices(Field, e, d);
+}
+
+test "float array encode decode" {
+    const alloc = std.testing.allocator;
+
+    var arr = try Array.init(.Float, alloc, 5);
+
+    try arr.append(Field{ .Float = std.math.e });
+    try arr.append(Field{ .Float = std.math.pi });
+    try arr.append(Field{ .Float = 0.0 });
+    try arr.append(Field{ .Float = 1.0 });
+    try arr.append(Field{ .Float = -1.0 });
+
+    const f = Field{ .Arr = arr };
+
+    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
+
+    var tmp = ArrayList(u8).init(alloc);
+    const n = try f.encode_append_writer(tmp.writer());
+    try std.testing.expectEqual(35, n);
+
+    const enc = try tmp.toOwnedSlice();
+    defer alloc.free(enc);
+
+    var dec = try Field.decode(enc, alloc);
+    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
+
+    const d = try dec.Arr.arr.toOwnedSlice();
+    defer alloc.free(d);
+
+    const e = try arr.arr.toOwnedSlice();
+    defer alloc.free(e);
+
+    try std.testing.expectEqualSlices(Field, e, d);
+}
+
+test "bool array encode decode" {
+    const alloc = std.testing.allocator;
+
+    var arr = try Array.init(.Bool, alloc, 5);
+
+    try arr.append(Field{ .Bool = true });
+    try arr.append(Field{ .Bool = false });
+    try arr.append(Field{ .Bool = true });
+    try arr.append(Field{ .Bool = false });
+    try arr.append(Field{ .Bool = false });
+
+    const f = Field{ .Arr = arr };
+
+    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
+
+    var tmp = ArrayList(u8).init(alloc);
+    const n = try f.encode_append_writer(tmp.writer());
+    try std.testing.expectEqual(20, n);
+
+    const enc = try tmp.toOwnedSlice();
+    defer alloc.free(enc);
+
+    var dec = try Field.decode(enc, alloc);
+    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
+
+    const d = try dec.Arr.arr.toOwnedSlice();
+    defer alloc.free(d);
+
+    const e = try arr.arr.toOwnedSlice();
+    defer alloc.free(e);
+
+    try std.testing.expectEqualSlices(Field, e, d);
+}
+test "char array encode decode" {
+    const alloc = std.testing.allocator;
+
+    var arr = try Array.init(.Char, alloc, 5);
+
+    try arr.append(Field{ .Char = 'H' });
+    try arr.append(Field{ .Char = 'e' });
+    try arr.append(Field{ .Char = 'l' });
+    try arr.append(Field{ .Char = 'l' });
+    try arr.append(Field{ .Char = 'o' });
+
+    const f = Field{ .Arr = arr };
+
+    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
+
+    var tmp = ArrayList(u8).init(alloc);
+    const n = try f.encode_append_writer(tmp.writer());
+    try std.testing.expectEqual(20, n);
+
+    const enc = try tmp.toOwnedSlice();
+    defer alloc.free(enc);
+
+    var dec = try Field.decode(enc, alloc);
+    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
+
+    const d = try dec.Arr.arr.toOwnedSlice();
+    defer alloc.free(d);
+
+    const e = try arr.arr.toOwnedSlice();
+    defer alloc.free(e);
+
+    try std.testing.expectEqualSlices(Field, e, d);
 }

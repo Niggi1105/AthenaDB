@@ -4,14 +4,15 @@ const Allocator = std.mem.Allocator;
 const Thread = std.Thread;
 const handle_req = AthenaCore.handle_req;
 const Request = @import("hermes").request.Request;
-pub const AthenaCore = @import("core.zig").AthenaCore;
+const core = @import("core.zig");
+pub const AthenaCore = core.AthenaCore;
 
 pub const AthenaDB = struct {
     pub fn start(alloc: Allocator, mark: *std.Thread.ResetEvent) !void {
         var dir = try std.fs.cwd().makeOpenPath("./db_files/", .{});
         std.log.info("opened db directory...", .{});
         defer dir.close();
-        var core = AthenaCore{ .alloc = alloc, .mutex = Thread.Mutex{}, .base_dir = dir };
+        var acore = AthenaCore{ .alloc = alloc, .mutex = Thread.Mutex{}, .base_dir = dir };
         std.log.info("started db core...", .{});
 
         var ni = try net.NetworkInterface.start(alloc, std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 3000));
@@ -29,7 +30,7 @@ pub const AthenaDB = struct {
             if (rq.header.method == .Shutdown) {
                 return;
             } else {
-                try pool.spawn(handle_req, .{ conn, rq, &core });
+                try pool.spawn(handle_req, .{ conn, rq, &acore });
             }
         } else |err| {
             std.log.err("can't accept new connection: {}", .{err});
@@ -37,3 +38,7 @@ pub const AthenaDB = struct {
         }
     }
 };
+
+test {
+    std.testing.refAllDecls(@This());
+}

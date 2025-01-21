@@ -1,5 +1,7 @@
 const std = @import("std");
 const hermes = @import("hermes");
+const entry = @import("entry.zig");
+const table = @import("table.zig");
 const Response = hermes.response.Response;
 const Request = hermes.request.Request;
 const Allocator = std.mem.Allocator;
@@ -63,3 +65,7 @@ pub const AthenaCore = struct {
         _ = conn.stream.writeAll(s) catch unreachable;
     }
 };
+test {
+    _ = entry;
+    std.testing.refAllDecls(@This());
+}

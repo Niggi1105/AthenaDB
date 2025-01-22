@@ -95,6 +95,7 @@ pub const Array = struct {
     }
 };
 
+//TODO: make it so that the decode takes a Field with undefined value, but defined enum variant as parameter, this allows for more efficient and safe decoding
 pub const Field = union(Primitive) {
     Int: i32,
     Bool: bool,
@@ -103,8 +104,15 @@ pub const Field = union(Primitive) {
     Arr: Array,
     OID: u64,
 
-    pub fn get_primitve(self: Field) Primitive {
+    pub fn deinit(self: Field) void {
         switch (self) {
+            .Arr => |arr| arr.deinit(),
+            else => {},
+        }
+    }
+
+    pub fn get_primitve(self: *const Field) Primitive {
+        switch (self.*) {
             .Int => {
                 return Primitive.Int;
             },

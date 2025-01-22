@@ -6,6 +6,10 @@ const Response = hermes.response.Response;
 const Request = hermes.request.Request;
 const Allocator = std.mem.Allocator;
 
+pub const ServerError = error{
+    OutOfMemory,
+};
+
 pub const AthenaCore = struct {
     mutex: std.Thread.Mutex,
     base_dir: std.fs.Dir,

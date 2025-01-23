@@ -3,5 +3,5 @@ A simplistic database implementation, used mainly for educational purposes. Ther
 ## How to run
 1. make sure you have zig installed.
 2. clone the repo and cd into it
-3. run ´zig build run´ to start the server
+3. run `zig build run` to start the server
 

@@ -68,14 +68,12 @@ pub const Entry = struct {
     }
 
     //TODO mke it so we can put in an array list with fields with undefined values and then just fill in the fields
-    pub fn decode(alloc: Allocator, bytes: []u8) !void {
-        var arr = ArrayList(Field).init(alloc);
-
+    pub fn decode(raw: *Entry, bytes: []u8) !void {
         if (bytes[0] != 'E') {
             return EntryError.InvalidBytes;
         }
-        for (self.fields.items) |*field| {
-            arr.append(try Field.decode(bytes[1..], alloc));
+        for (raw.fields.items) |*field| {
+            Field.decode(bytes[1..], field);
         }
     }
 };
@@ -86,5 +84,5 @@ test "update field" {
     defer e.deinit();
     try e.add_field(0, Field{ .Int = undefined });
     try e.update_field(0, Field{ .Int = 20 });
-    try std.testing.expectEqual(Field{ .Int = 20 }, e.get_field(0).*);
+    try std.testing.expectEqual(Field{ .Int = 20 }, e.fields.items[0]);
 }

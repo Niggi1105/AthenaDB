@@ -2,12 +2,19 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
+pub const FieldError = error{
+    TypeMismatch,
+};
 pub const DecodeError = error{
-    UnexpectedPrefix,
+    InvalidBytes,
+    RecursiveType,
+    TypeMismatch,
 };
 
 pub const ArrayError = error{
     MaxSize,
+    TypeMismatch,
+    NotAllowed,
 };
 
 pub const Array = struct {
@@ -18,23 +25,34 @@ pub const Array = struct {
     len: usize,
 
     pub fn init(T: Primitive, alloc: Allocator, len: usize) !Array {
-        std.debug.assert(T != Primitive.Arr);
+        if (T == Primitive.Arr) {
+            return ArrayError.NotAllowed;
+        }
         const arr = try ArrayList(Field).initCapacity(alloc, len);
         return .{ .len = len, .T = T, .arr = arr, .alloc = alloc };
     }
 
-    pub fn deinit(self: *Array) void {
+    pub fn deinit(self: Array) void {
         self.arr.deinit();
     }
 
+    ///creates an Array of undefined type and length
+    pub fn init_undef(alloc: Allocator) Array {
+        return .{ .len = undefined, .T = undefined, .alloc = alloc, .arr = ArrayList(Field).init(alloc) };
+    }
+
     pub fn append(self: *Array, field: Field) !void {
-        std.debug.assert(field.get_primitve() == self.T);
+        if (field.get_primitve() != self.T) {
+            return ArrayError.TypeMismatch;
+        }
+
         if (self.len <= self.arr.items.len) {
             return ArrayError.MaxSize;
         }
         try self.arr.append(field);
     }
 
+    ///asserts that every item has the same Primitive type
     fn encode_and_append(self: *const Array, w: anytype) !void {
         //if len is 0 we just send 0 as len and size with no items
         if (self.arr.items.len == 0) {
@@ -62,36 +80,40 @@ pub const Array = struct {
         }
     }
 
-    fn decode(alloc: Allocator, bytes: []u8) anyerror!Array {
-
-        //the A indicates the beginning of the Array
-        std.debug.assert(bytes[0] == 'A');
-
-        //the Primitive type
-        const T: Primitive = @enumFromInt(bytes[1]);
-        std.debug.assert(T != Primitive.Arr);
+    //the passed array should be completely undefined except for an initialized array list and an allocator
+    fn decode(arr: *Array, bytes: []u8) anyerror!void {
+        //the Primitive type of the items
+        const T: Primitive = @enumFromInt(bytes[0]);
+        if (T == Primitive.Arr) {
+            return DecodeError.RecursiveType;
+        }
+        arr.T = T;
 
         //the length of the array
-        const len = std.mem.readInt(u32, bytes[2..6], .little);
+        const len = std.mem.readInt(u32, bytes[1..5], .little);
+        arr.len = len;
 
         //the size of each element
-        const size = std.mem.readInt(u32, bytes[6..10], .little);
+        const size = std.mem.readInt(u32, bytes[5..9], .little);
+        //we assert that the size matches that of our expected type
+        if (size != T.enc_size()) {
+            return DecodeError.InvalidBytes;
+        }
 
         const total_size: usize = @as(usize, size * len);
 
         //the remaining bytes should be more or equal to the expected amount of bytes
-        std.debug.assert(total_size + 10 <= bytes.len);
-
-        var arr = try ArrayList(Field).initCapacity(alloc, len);
+        if (total_size + 9 > bytes.len) {
+            return DecodeError.InvalidBytes;
+        }
 
         for (0..len) |k| {
-            //k is the index in the array, 10 the base offset so raw elements are the bytes kth item in the array
-            const raw_elem = bytes[(10 + k * size)..(10 + (k + 1) * size)];
-            const field = try Field.decode(raw_elem, alloc);
-            std.debug.assert(field.get_primitve() == T);
-            try arr.append(field);
+            //k is the index in the array, 9 is the base offset so raw elements are the bytes kth item in the array
+            var raw = Field.undef_from_primitive(T, arr.alloc);
+            const raw_bytes = bytes[(9 + k * size)..(9 + (k + 1) * size)];
+            try raw.decode(raw_bytes);
+            try arr.append(raw);
         }
-        return Array{ .len = len, .arr = arr, .alloc = alloc, .T = T };
     }
 };
 
@@ -134,6 +156,17 @@ pub const Field = union(Primitive) {
         }
     }
 
+    pub fn undef_from_primitive(T: Primitive, alloc: Allocator) Field {
+        switch (T) {
+            .Int => return Field{ .Int = undefined },
+            .Bool => return Field{ .Bool = undefined },
+            .Float => return Field{ .Float = undefined },
+            .Char => return Field{ .Char = undefined },
+            .Arr => return Field{ .Arr = Array.init_undef(alloc) },
+            .OID => return Field{ .OID = undefined },
+        }
+    }
+
     pub fn encode_append_writer(self: *const Field, w: anytype) anyerror!void {
         switch (self.*) {
             .Int => |*i| {
@@ -162,34 +195,51 @@ pub const Field = union(Primitive) {
             },
         }
     }
-    pub fn decode(bytes: []u8, alloc: Allocator) !Field {
+    pub fn decode(field: *Field, bytes: []u8) !void {
         switch (bytes[0]) {
             'I' => |_| {
+                if (field.get_primitve() != .Int) {
+                    return DecodeError.TypeMismatch;
+                }
                 const i = std.mem.readInt(i32, bytes[1..5], .little);
-                return Field{ .Int = i };
+                field.Int = i;
             },
             'O' => |_| {
-                const i = std.mem.readInt(u64, bytes[1..9], .little);
-                return Field{ .OID = i };
+                if (field.get_primitve() != .OID) {
+                    return DecodeError.TypeMismatch;
+                }
+                const o = std.mem.readInt(u64, bytes[1..9], .little);
+                field.OID = o;
             },
             'B' => |_| {
+                if (field.get_primitve() != .Bool) {
+                    return DecodeError.TypeMismatch;
+                }
                 const b = (bytes[1] == 255);
-                return Field{ .Bool = b };
+                field.Bool = b;
             },
             'F' => |_| {
+                if (field.get_primitve() != .Float) {
+                    return DecodeError.TypeMismatch;
+                }
                 const r = std.mem.readInt(u32, bytes[1..5], .little);
                 const f: f32 = @bitCast(r);
-                return Field{ .Float = f };
+                field.Float = f;
             },
             'C' => |_| {
-                return Field{ .Char = bytes[1] };
+                if (field.get_primitve() != .Char) {
+                    return DecodeError.TypeMismatch;
+                }
+                field.Char = bytes[1];
             },
             'A' => |_| {
-                const a = try Array.decode(alloc, bytes);
-                return Field{ .Arr = a };
+                if (field.get_primitve() != .Arr) {
+                    return DecodeError.TypeMismatch;
+                }
+                try field.Arr.decode(bytes[1..]);
             },
             else => |_| {
-                return DecodeError.UnexpectedPrefix;
+                return DecodeError.InvalidBytes;
             },
         }
     }
@@ -227,8 +277,8 @@ pub const Primitive = enum(u8) {
     }
 };
 
-test "Int Field encode-decode" {
-    const d = Field{ .Int = 32 };
+///this fn is purely for testing purposes
+fn test_primitives(d: Field) !void {
     const alloc = std.testing.allocator;
 
     var tmp = ArrayList(u8).init(alloc);
@@ -236,194 +286,122 @@ test "Int Field encode-decode" {
 
     const enc = try tmp.toOwnedSlice();
     defer alloc.free(enc);
-    const dec = try Field.decode(enc, alloc);
 
-    try std.testing.expectEqual(d, dec);
+    var f = Field.undef_from_primitive(d.get_primitve(), alloc);
+    try f.decode(enc);
+
+    try std.testing.expectEqual(d, f);
+}
+fn test_arr(d: *Field) !void {
+    const alloc = std.testing.allocator;
+
+    var tmp = ArrayList(u8).init(alloc);
+    try d.encode_append_writer(tmp.writer());
+
+    const enc = try tmp.toOwnedSlice();
+    defer alloc.free(enc);
+
+    var f = Field.undef_from_primitive(d.get_primitve(), alloc);
+    try f.decode(enc);
+
+    const e = try d.Arr.arr.toOwnedSlice();
+    defer alloc.free(e);
+
+    const fb = try f.Arr.arr.toOwnedSlice();
+    defer alloc.free(fb);
+
+    try std.testing.expectEqualSlices(Field, e, fb);
+}
+
+test "Int Field encode-decode" {
+    try test_primitives(Field{ .Int = 32 });
 }
 test "Bool Field encode-decode" {
-    const d = Field{ .Bool = true };
-    const alloc = std.testing.allocator;
-
-    var tmp = ArrayList(u8).init(alloc);
-    try d.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-    const dec = try Field.decode(enc, alloc);
-
-    try std.testing.expectEqual(d, dec);
+    try test_primitives(Field{ .Bool = true });
 }
 test "Float Field encode-decode" {
-    const d = Field{ .Float = 3.1415 };
-    const alloc = std.testing.allocator;
-
-    var tmp = ArrayList(u8).init(alloc);
-    try d.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-    const dec = try Field.decode(enc, alloc);
-
-    try std.testing.expectEqual(d, dec);
+    try test_primitives(Field{ .Float = std.math.pi });
 }
 test "Char Field encode-decode" {
-    const d = Field{ .Char = 3 };
-    const alloc = std.testing.allocator;
-
-    var tmp = ArrayList(u8).init(alloc);
-    try d.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-    const dec = try Field.decode(enc, alloc);
-
-    try std.testing.expectEqual(d, dec);
+    try test_primitives(Field{ .Char = 'A' });
 }
 test "OID Field encode-decode" {
-    const d = Field{ .OID = std.math.maxInt(u64) };
-    const alloc = std.testing.allocator;
-
-    var tmp = ArrayList(u8).init(alloc);
-    try d.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-    const dec = try Field.decode(enc, alloc);
-
-    try std.testing.expectEqual(d, dec);
+    try test_primitives(Field{ .OID = std.math.maxInt(u64) });
 }
 
-test "int array encode decode" {
+test "basic array functionality" {
+    const alloc = std.testing.allocator;
+    try std.testing.expectError(ArrayError.NotAllowed, Array.init(Primitive.Arr, alloc, 10));
+    var arr = try Array.init(.Int, alloc, 5);
+    defer arr.deinit();
+    try std.testing.expectError(ArrayError.TypeMismatch, arr.append(Field{ .Bool = true }));
+    try arr.append(Field{ .Int = 10 });
+    try arr.append(Field{ .Int = 2 });
+    try arr.append(Field{ .Int = -30 });
+    try arr.append(Field{ .Int = 5 });
+    try arr.append(Field{ .Int = 4000 });
+    try std.testing.expectError(ArrayError.MaxSize, arr.append(Field{ .Int = 3 }));
+}
+test "int array encode-decode" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.Int, alloc, 5);
 
+    try arr.append(Field{ .Int = 10 });
+    try arr.append(Field{ .Int = 2 });
+    try arr.append(Field{ .Int = -30 });
     try arr.append(Field{ .Int = 5 });
-    try arr.append(Field{ .Int = 3 });
-    try arr.append(Field{ .Int = 4 });
-    try arr.append(Field{ .Int = 1 });
-    try arr.append(Field{ .Int = 6 });
+    try arr.append(Field{ .Int = 4000 });
 
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
+    var f = Field{ .Arr = arr };
+    try test_arr(&f);
 }
 
-test "float array encode decode" {
-    const alloc = std.testing.allocator;
-
-    var arr = try Array.init(.Float, alloc, 5);
-
-    try arr.append(Field{ .Float = std.math.e });
-    try arr.append(Field{ .Float = std.math.pi });
-    try arr.append(Field{ .Float = 0.0 });
-    try arr.append(Field{ .Float = 1.0 });
-    try arr.append(Field{ .Float = -1.0 });
-
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
-}
-
-test "bool array encode decode" {
+test "bool array encode-decode" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.Bool, alloc, 5);
 
     try arr.append(Field{ .Bool = true });
+    try arr.append(Field{ .Bool = true });
     try arr.append(Field{ .Bool = false });
     try arr.append(Field{ .Bool = true });
     try arr.append(Field{ .Bool = false });
-    try arr.append(Field{ .Bool = false });
 
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
+    var f = Field{ .Arr = arr };
+    try test_arr(&f);
 }
-test "char array encode decode" {
+
+test "float array encode-decode" {
+    const alloc = std.testing.allocator;
+
+    var arr = try Array.init(.Float, alloc, 5);
+
+    try arr.append(Field{ .Float = 4.0 });
+    try arr.append(Field{ .Float = -134.0 });
+    try arr.append(Field{ .Float = std.math.pi });
+    try arr.append(Field{ .Float = std.math.e });
+    try arr.append(Field{ .Float = @sqrt(2.0) });
+
+    var f = Field{ .Arr = arr };
+    try test_arr(&f);
+}
+test "char array encode-decode" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.Char, alloc, 5);
 
     try arr.append(Field{ .Char = 'H' });
-    try arr.append(Field{ .Char = 'e' });
-    try arr.append(Field{ .Char = 'l' });
-    try arr.append(Field{ .Char = 'l' });
-    try arr.append(Field{ .Char = 'o' });
+    try arr.append(Field{ .Char = 'E' });
+    try arr.append(Field{ .Char = 'L' });
+    try arr.append(Field{ .Char = 'L' });
+    try arr.append(Field{ .Char = 'O' });
 
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
+    var f = Field{ .Arr = arr };
+    try test_arr(&f);
 }
-test "OID array encode decode" {
+
+test "oid array encode-decode" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.OID, alloc, 5);
@@ -434,28 +412,11 @@ test "OID array encode decode" {
     try arr.append(Field{ .OID = std.math.maxInt(u64) });
     try arr.append(Field{ .OID = std.math.maxInt(u64) });
 
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
+    var f = Field{ .Arr = arr };
+    try test_arr(&f);
 }
-test "array to many items" {
+
+test "array encode-decode, less than max items" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.OID, alloc, 5);
@@ -463,60 +424,7 @@ test "array to many items" {
     try arr.append(Field{ .OID = std.math.maxInt(u64) });
     try arr.append(Field{ .OID = std.math.maxInt(u64) });
     try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try std.testing.expectError(ArrayError.MaxSize, arr.append(Field{ .OID = std.math.maxInt(u64) }));
 
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
-}
-
-test "array to few items" {
-    const alloc = std.testing.allocator;
-
-    var arr = try Array.init(.OID, alloc, 5);
-
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-
-    const f = Field{ .Arr = arr };
-
-    try std.testing.expectEqual(Primitive.Arr, f.get_primitve());
-
-    var tmp = ArrayList(u8).init(alloc);
-    try f.encode_append_writer(tmp.writer());
-
-    const enc = try tmp.toOwnedSlice();
-    defer alloc.free(enc);
-
-    var dec = try Field.decode(enc, alloc);
-    try std.testing.expectEqual(dec.get_primitve(), Primitive.Arr);
-
-    const d = try dec.Arr.arr.toOwnedSlice();
-    defer alloc.free(d);
-
-    const e = try arr.arr.toOwnedSlice();
-    defer alloc.free(e);
-
-    try std.testing.expectEqualSlices(Field, e, d);
+    var f = Field{ .Arr = arr };
+    try test_arr(&f);
 }

@@ -67,13 +67,12 @@ pub const Entry = struct {
         }
     }
 
-    //TODO mke it so we can put in an array list with fields with undefined values and then just fill in the fields
     pub fn decode(raw: *Entry, bytes: []u8) !void {
         if (bytes[0] != 'E') {
             return EntryError.InvalidBytes;
         }
         for (raw.fields.items) |*field| {
-            Field.decode(bytes[1..], field);
+            field.decode(bytes[1..]);
         }
     }
 };

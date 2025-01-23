@@ -81,7 +81,7 @@ pub const Array = struct {
     }
 
     //the passed array should be completely undefined except for an initialized array list and an allocator
-    fn decode(arr: *Array, bytes: []u8) anyerror!void {
+    fn decode(arr: *Array, bytes: []u8) anyerror!usize {
         //the Primitive type of the items
         const T: Primitive = @enumFromInt(bytes[0]);
         if (T == Primitive.Arr) {
@@ -111,13 +111,15 @@ pub const Array = struct {
             //k is the index in the array, 9 is the base offset so raw elements are the bytes kth item in the array
             var raw = Field.undef_from_primitive(T, arr.alloc);
             const raw_bytes = bytes[(9 + k * size)..(9 + (k + 1) * size)];
-            try raw.decode(raw_bytes);
+            _ = try raw.decode(raw_bytes);
             try arr.append(raw);
         }
+
+        //9 bytes header, plus 1 byte Prefix
+        return total_size + 9 + 1;
     }
 };
 
-//TODO: make it so that the decode takes a Field with undefined value, but defined enum variant as parameter, this allows for more efficient and safe decoding
 pub const Field = union(Primitive) {
     Int: i32,
     Bool: bool,
@@ -195,7 +197,7 @@ pub const Field = union(Primitive) {
             },
         }
     }
-    pub fn decode(field: *Field, bytes: []u8) !void {
+    pub fn decode(field: *Field, bytes: []u8) !usize {
         switch (bytes[0]) {
             'I' => |_| {
                 if (field.get_primitve() != .Int) {
@@ -203,6 +205,7 @@ pub const Field = union(Primitive) {
                 }
                 const i = std.mem.readInt(i32, bytes[1..5], .little);
                 field.Int = i;
+                return Primitive.Int.enc_size();
             },
             'O' => |_| {
                 if (field.get_primitve() != .OID) {
@@ -210,6 +213,7 @@ pub const Field = union(Primitive) {
                 }
                 const o = std.mem.readInt(u64, bytes[1..9], .little);
                 field.OID = o;
+                return Primitive.OID.enc_size();
             },
             'B' => |_| {
                 if (field.get_primitve() != .Bool) {
@@ -217,6 +221,7 @@ pub const Field = union(Primitive) {
                 }
                 const b = (bytes[1] == 255);
                 field.Bool = b;
+                return Primitive.Bool.enc_size();
             },
             'F' => |_| {
                 if (field.get_primitve() != .Float) {
@@ -225,18 +230,20 @@ pub const Field = union(Primitive) {
                 const r = std.mem.readInt(u32, bytes[1..5], .little);
                 const f: f32 = @bitCast(r);
                 field.Float = f;
+                return Primitive.Float.enc_size();
             },
             'C' => |_| {
                 if (field.get_primitve() != .Char) {
                     return DecodeError.TypeMismatch;
                 }
                 field.Char = bytes[1];
+                return Primitive.Char.enc_size();
             },
             'A' => |_| {
                 if (field.get_primitve() != .Arr) {
                     return DecodeError.TypeMismatch;
                 }
-                try field.Arr.decode(bytes[1..]);
+                return try field.Arr.decode(bytes[1..]);
             },
             else => |_| {
                 return DecodeError.InvalidBytes;
@@ -288,10 +295,12 @@ fn test_primitives(d: Field) !void {
     defer alloc.free(enc);
 
     var f = Field.undef_from_primitive(d.get_primitve(), alloc);
-    try f.decode(enc);
+
+    try std.testing.expectEqual(d.get_primitve().enc_size(), try f.decode(enc));
 
     try std.testing.expectEqual(d, f);
 }
+
 fn test_arr(d: *Field) !void {
     const alloc = std.testing.allocator;
 
@@ -302,7 +311,7 @@ fn test_arr(d: *Field) !void {
     defer alloc.free(enc);
 
     var f = Field.undef_from_primitive(d.get_primitve(), alloc);
-    try f.decode(enc);
+    try std.testing.expectEqual(d.Arr.T.enc_size() * d.Arr.arr.items.len + 10, try f.decode(enc));
 
     const e = try d.Arr.arr.toOwnedSlice();
     defer alloc.free(e);

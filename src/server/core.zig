@@ -1,14 +1,18 @@
 const std = @import("std");
 const hermes = @import("hermes");
-const entry = @import("entry.zig");
-const table = @import("table.zig");
 const Response = hermes.response.Response;
 const Request = hermes.request.Request;
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 
 pub const ServerError = error{
     OutOfMemory,
 };
+
+fn generate_key() u32 {
+    var r = std.Random.DefaultPrng.init(@bitCast(std.time.timestamp()));
+    return @truncate(r.next());
+}
 
 pub const AthenaCore = struct {
     mutex: std.Thread.Mutex,
@@ -19,57 +23,36 @@ pub const AthenaCore = struct {
     const Self = @This();
 
     fn handle_get_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
+        const file = try self.base_dir.createFile(&std.mem.toBytes(rq.header.key), .{});
+        try file.lock(.exclusive);
+        const content = try file.readToEndAlloc(self.alloc, std.math.maxInt(usize));
+        return Response.ok(content, self.alloc, 0);
     }
     fn handle_put_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
-    }
-    fn handle_delete_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
-    }
-    fn handle_new_db_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
-    }
-    fn handle_new_coll_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
-    }
-    fn handle_delete_db_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
-    }
-    fn handle_delete_coll_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
-    }
-    fn handle_shutdown_req(self: *Self, rq: Request) !Response {
-        _ = rq;
-        return Response.ok(self.alloc, "foo");
+        const key: u32 = generate_key();
+        const file = try self.base_dir.createFile(&std.mem.toBytes(key), .{});
+        try file.lock(.exclusive);
+        try file.writeAll(rq.body);
+        return Response.ok(&[_]u8{}, self.alloc, key);
     }
 
-    pub fn handle_req(conn: std.net.Server.Connection, rq: Request, core: *AthenaCore) void {
+    pub fn handle_conn(self: *AthenaCore, conn: std.net.Server.Connection) void {
+        const rq = Request.from_reader(self.alloc, conn.stream.reader()) catch unreachable;
+        defer rq.deinit();
+
         const rsp = switch (rq.header.method) {
-            .Ping => Response.ok(core.alloc, "Pong") catch unreachable,
-            .Get => core.handle_get_req(rq) catch unreachable,
-            .Put => core.handle_put_req(rq) catch unreachable,
-            .Delete => core.handle_delete_req(rq) catch unreachable,
-            .NewDB => core.handle_new_db_req(rq) catch unreachable,
-            .NewColl => core.handle_new_coll_req(rq) catch unreachable,
-            .DeleteDB => core.handle_delete_db_req(rq) catch unreachable,
-            .DeleteColl => core.handle_delete_coll_req(rq) catch unreachable,
-            .Shutdown => core.handle_shutdown_req(rq) catch unreachable,
+            .Get => self.handle_get_req(rq) catch unreachable,
+            .Put => self.handle_put_req(rq) catch unreachable,
         };
-        defer rsp.deinit();
-        const s = rsp.serialize() catch unreachable;
-        defer core.alloc.free(s);
-        _ = conn.stream.writeAll(s) catch unreachable;
+
+        var buf = ArrayList(u8).init(self.alloc);
+        defer buf.deinit();
+
+        rsp.encode(buf.writer()) catch unreachable;
+
+        _ = conn.stream.writeAll(buf.items) catch unreachable;
     }
 };
 test {
-    _ = entry;
     std.testing.refAllDecls(@This());
 }

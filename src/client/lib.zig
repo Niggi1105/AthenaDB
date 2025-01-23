@@ -11,47 +11,39 @@ pub const Client = struct {
 
     alloc: Allocator,
 
-    const Self = @This();
-
-    pub fn connect(alloc: Allocator, addr: std.net.Address) !Self {
+    pub fn connect(alloc: Allocator, addr: std.net.Address) !Client {
         const stream = try std.net.tcpConnectToAddress(addr);
-        return Self{ .stream = stream, .alloc = alloc };
+        return Client{ .stream = stream, .alloc = alloc };
     }
 
-    pub fn ping(self: *const Self) !void {
-        const rq = try Request.ping(self.alloc, 0, 0);
-        defer rq.deinit();
-
-        const bytes = try rq.serialize();
-        defer self.alloc.free(bytes);
-
-        try self.stream.writeAll(bytes);
-
-        const r = self.stream.reader();
-        const rsp = try Response.from_reader(self.alloc, r);
-        defer rsp.deinit();
-
-        const expect = try Response.ok(self.alloc, "Pong");
-        defer expect.deinit();
-        std.debug.assert(std.meta.eql(expect.header, rsp.header));
-        std.debug.assert(std.mem.eql(u8, expect.body, rsp.body));
+    pub fn get(self: Client, key: u32) !Response {
+        const rq = Request.get(key, self.alloc);
+        try rq.encode(self.stream.writer());
+        const rsp = try Response.from_reader(self.alloc, self.stream.reader());
+        return rsp;
+    }
+    pub fn put(self: Client, data: []u8) !Response {
+        const rq = Request.put(data, self.alloc);
+        try rq.encode(self.stream.writer());
+        const rsp = try Response.from_reader(self.alloc, self.stream.reader());
+        return rsp;
     }
 
-    pub fn shutdown(self: *const Self) !void {
-        const rq = try Request.shutdown(self.alloc, 0, 0);
-        defer rq.deinit();
-
-        const bytes = try rq.serialize();
-        defer self.alloc.free(bytes);
-
-        try self.stream.writeAll(bytes);
-    }
-
-    pub fn disconnect(self: *const Self) void {
+    pub fn disconnect(self: Client) void {
         self.stream.close();
     }
 };
 
 test {
     std.testing.refAllDecls(@This());
+    const alloc = std.testing.allocator;
+    const client = try Client.connect(alloc, std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 3000));
+    const data = "Hello World";
+    var slice = std.mem.toBytes(data);
+    const rsp = try client.put(&slice);
+    defer rsp.deinit();
+    const rsp2 = try client.get(rsp.header.key);
+    defer rsp2.deinit();
+
+    try std.testing.expectEqualSlices(u8, rsp2.body, &slice);
 }

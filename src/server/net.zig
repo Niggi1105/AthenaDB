@@ -11,19 +11,19 @@ pub const NetworkInterface = struct {
     addr: net.Address,
     server: net.Server,
 
-    alloc: Allocator,
-
     const Self = @This();
 
-    pub fn start(alloc: Allocator, addr: net.Address) !Self {
+    pub fn start(addr: net.Address) !Self {
         std.log.info("starting network interface...", .{});
+
         const server = try addr.listen(.{});
-        return Self{ .addr = addr, .server = server, .alloc = alloc };
+        return Self{ .addr = addr, .server = server };
     }
 
     ///blocks until next incomming request
     pub fn next_conn(self: *Self) !std.net.Server.Connection {
         std.log.info("start listening for connections...", .{});
+
         return self.server.accept();
     }
 

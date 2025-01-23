@@ -73,7 +73,7 @@ pub const Entry = struct {
         }
     }
 
-    pub fn decode(raw: *Entry, bytes: []u8) !void {
+    pub fn decode(raw: *Entry, bytes: []u8) !usize {
         if (bytes[0] != 'E') {
             return EntryError.InvalidBytes;
         }
@@ -81,15 +81,18 @@ pub const Entry = struct {
         for (raw.fields.items) |*field| {
             i += try field.decode(bytes[i..]);
         }
+        return i;
     }
 };
 
-test "update field" {
+test "basic functunality" {
     const alloc = std.testing.allocator;
     var e = Entry.init(alloc);
     defer e.deinit();
     try e.add_field(0, Field{ .Int = undefined });
     try e.update_field(0, Field{ .Int = 20 });
+    try std.testing.expectError(EntryError.TypeMismatch, e.update_field(0, Field{ .Bool = true }));
+    try std.testing.expectError(EntryError.IndexOutOfBounds, e.add_field(2, Field{ .Bool = true }));
     try std.testing.expectEqual(Field{ .Int = 20 }, e.fields.items[0]);
 }
 
@@ -126,7 +129,7 @@ test "entry encode-decode" {
 
     const bytes = try buf.toOwnedSlice();
     defer alloc.free(bytes);
-    try undef.decode(bytes);
+    _ = try undef.decode(bytes);
 
     try std.testing.expectEqualSlices(Field, e.fields.items[0..5], undef.fields.items[0..5]);
 

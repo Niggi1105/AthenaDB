@@ -6,7 +6,8 @@ const Primitive = @import("hermes").field.Primitive;
 const Entry = @import("entry.zig").Entry;
 
 pub const Table = struct {
-    id: 128,
+    id: u64,
+    name: []u8,
     entries: ArrayList(Entry),
     field_names: ArrayList([]u8),
     alloc: Allocator,
@@ -20,7 +21,7 @@ pub const Table = struct {
         return null;
     }
 
-    pub fn create(alloc: Allocator, id: u128) !Table {
+    pub fn create(alloc: Allocator, id: u64) !Table {
         const entries = ArrayList(Field).init(alloc);
         const field_names = ArrayList([]u8).init(alloc);
         try field_names.append("_oid");

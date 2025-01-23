@@ -20,7 +20,7 @@ pub const ArrayError = error{
 pub const Array = struct {
     ///this field is not to be accessed directly, please use one of the provided functions
     T: Primitive,
-    arr: ArrayList(Field),
+    arr: ArrayList(Record),
     alloc: Allocator,
     len: usize,
 
@@ -28,7 +28,7 @@ pub const Array = struct {
         if (T == Primitive.Arr) {
             return ArrayError.NotAllowed;
         }
-        const arr = try ArrayList(Field).initCapacity(alloc, len);
+        const arr = try ArrayList(Record).initCapacity(alloc, len);
         return .{ .len = len, .T = T, .arr = arr, .alloc = alloc };
     }
 
@@ -38,10 +38,10 @@ pub const Array = struct {
 
     ///creates an Array of undefined type and length
     pub fn init_undef(alloc: Allocator) Array {
-        return .{ .len = undefined, .T = undefined, .alloc = alloc, .arr = ArrayList(Field).init(alloc) };
+        return .{ .len = undefined, .T = undefined, .alloc = alloc, .arr = ArrayList(Record).init(alloc) };
     }
 
-    pub fn append(self: *Array, field: Field) !void {
+    pub fn append(self: *Array, field: Record) !void {
         if (field.get_primitve() != self.T) {
             return ArrayError.TypeMismatch;
         }
@@ -109,7 +109,7 @@ pub const Array = struct {
 
         for (0..len) |k| {
             //k is the index in the array, 9 is the base offset so raw elements are the bytes kth item in the array
-            var raw = Field.undef_from_primitive(T, arr.alloc);
+            var raw = Record.undef_from_primitive(T, arr.alloc);
             const raw_bytes = bytes[(9 + k * size)..(9 + (k + 1) * size)];
             _ = try raw.decode(raw_bytes);
             try arr.append(raw);
@@ -120,7 +120,7 @@ pub const Array = struct {
     }
 };
 
-pub const Field = union(Primitive) {
+pub const Record = union(Primitive) {
     Int: i32,
     Bool: bool,
     Float: f32,
@@ -128,14 +128,14 @@ pub const Field = union(Primitive) {
     Arr: Array,
     OID: u64,
 
-    pub fn deinit(self: Field) void {
+    pub fn deinit(self: Record) void {
         switch (self) {
             .Arr => |arr| arr.deinit(),
             else => {},
         }
     }
 
-    pub fn get_primitve(self: *const Field) Primitive {
+    pub fn get_primitve(self: *const Record) Primitive {
         switch (self.*) {
             .Int => {
                 return Primitive.Int;
@@ -158,18 +158,18 @@ pub const Field = union(Primitive) {
         }
     }
 
-    pub fn undef_from_primitive(T: Primitive, alloc: Allocator) Field {
+    pub fn undef_from_primitive(T: Primitive, alloc: Allocator) Record {
         switch (T) {
-            .Int => return Field{ .Int = undefined },
-            .Bool => return Field{ .Bool = undefined },
-            .Float => return Field{ .Float = undefined },
-            .Char => return Field{ .Char = undefined },
-            .Arr => return Field{ .Arr = Array.init_undef(alloc) },
-            .OID => return Field{ .OID = undefined },
+            .Int => return Record{ .Int = undefined },
+            .Bool => return Record{ .Bool = undefined },
+            .Float => return Record{ .Float = undefined },
+            .Char => return Record{ .Char = undefined },
+            .Arr => return Record{ .Arr = Array.init_undef(alloc) },
+            .OID => return Record{ .OID = undefined },
         }
     }
 
-    pub fn encode_append_writer(self: *const Field, w: anytype) anyerror!void {
+    pub fn encode_append_writer(self: *const Record, w: anytype) anyerror!void {
         switch (self.*) {
             .Int => |*i| {
                 try w.writeByte('I');
@@ -197,7 +197,7 @@ pub const Field = union(Primitive) {
             },
         }
     }
-    pub fn decode(field: *Field, bytes: []u8) !usize {
+    pub fn decode(field: *Record, bytes: []u8) !usize {
         switch (bytes[0]) {
             'I' => |_| {
                 if (field.get_primitve() != .Int) {
@@ -285,7 +285,7 @@ pub const Primitive = enum(u8) {
 };
 
 ///this fn is purely for testing purposes
-fn test_primitives(d: Field) !void {
+fn test_primitives(d: Record) !void {
     const alloc = std.testing.allocator;
 
     var tmp = ArrayList(u8).init(alloc);
@@ -294,14 +294,14 @@ fn test_primitives(d: Field) !void {
     const enc = try tmp.toOwnedSlice();
     defer alloc.free(enc);
 
-    var f = Field.undef_from_primitive(d.get_primitve(), alloc);
+    var f = Record.undef_from_primitive(d.get_primitve(), alloc);
 
     try std.testing.expectEqual(d.get_primitve().enc_size(), try f.decode(enc));
 
     try std.testing.expectEqual(d, f);
 }
 
-fn test_arr(d: *Field) !void {
+fn test_arr(d: *Record) !void {
     const alloc = std.testing.allocator;
 
     var tmp = ArrayList(u8).init(alloc);
@@ -310,7 +310,7 @@ fn test_arr(d: *Field) !void {
     const enc = try tmp.toOwnedSlice();
     defer alloc.free(enc);
 
-    var f = Field.undef_from_primitive(d.get_primitve(), alloc);
+    var f = Record.undef_from_primitive(d.get_primitve(), alloc);
     try std.testing.expectEqual(d.Arr.T.enc_size() * d.Arr.arr.items.len + 10, try f.decode(enc));
 
     const e = try d.Arr.arr.toOwnedSlice();
@@ -319,23 +319,23 @@ fn test_arr(d: *Field) !void {
     const fb = try f.Arr.arr.toOwnedSlice();
     defer alloc.free(fb);
 
-    try std.testing.expectEqualSlices(Field, e, fb);
+    try std.testing.expectEqualSlices(Record, e, fb);
 }
 
-test "Int Field encode-decode" {
-    try test_primitives(Field{ .Int = 32 });
+test "Int Record encode-decode" {
+    try test_primitives(Record{ .Int = 32 });
 }
-test "Bool Field encode-decode" {
-    try test_primitives(Field{ .Bool = true });
+test "Bool Record encode-decode" {
+    try test_primitives(Record{ .Bool = true });
 }
-test "Float Field encode-decode" {
-    try test_primitives(Field{ .Float = std.math.pi });
+test "Float Record encode-decode" {
+    try test_primitives(Record{ .Float = std.math.pi });
 }
-test "Char Field encode-decode" {
-    try test_primitives(Field{ .Char = 'A' });
+test "Char Record encode-decode" {
+    try test_primitives(Record{ .Char = 'A' });
 }
-test "OID Field encode-decode" {
-    try test_primitives(Field{ .OID = std.math.maxInt(u64) });
+test "OID Record encode-decode" {
+    try test_primitives(Record{ .OID = std.math.maxInt(u64) });
 }
 
 test "basic array functionality" {
@@ -343,26 +343,26 @@ test "basic array functionality" {
     try std.testing.expectError(ArrayError.NotAllowed, Array.init(Primitive.Arr, alloc, 10));
     var arr = try Array.init(.Int, alloc, 5);
     defer arr.deinit();
-    try std.testing.expectError(ArrayError.TypeMismatch, arr.append(Field{ .Bool = true }));
-    try arr.append(Field{ .Int = 10 });
-    try arr.append(Field{ .Int = 2 });
-    try arr.append(Field{ .Int = -30 });
-    try arr.append(Field{ .Int = 5 });
-    try arr.append(Field{ .Int = 4000 });
-    try std.testing.expectError(ArrayError.MaxSize, arr.append(Field{ .Int = 3 }));
+    try std.testing.expectError(ArrayError.TypeMismatch, arr.append(Record{ .Bool = true }));
+    try arr.append(Record{ .Int = 10 });
+    try arr.append(Record{ .Int = 2 });
+    try arr.append(Record{ .Int = -30 });
+    try arr.append(Record{ .Int = 5 });
+    try arr.append(Record{ .Int = 4000 });
+    try std.testing.expectError(ArrayError.MaxSize, arr.append(Record{ .Int = 3 }));
 }
 test "int array encode-decode" {
     const alloc = std.testing.allocator;
 
     var arr = try Array.init(.Int, alloc, 5);
 
-    try arr.append(Field{ .Int = 10 });
-    try arr.append(Field{ .Int = 2 });
-    try arr.append(Field{ .Int = -30 });
-    try arr.append(Field{ .Int = 5 });
-    try arr.append(Field{ .Int = 4000 });
+    try arr.append(Record{ .Int = 10 });
+    try arr.append(Record{ .Int = 2 });
+    try arr.append(Record{ .Int = -30 });
+    try arr.append(Record{ .Int = 5 });
+    try arr.append(Record{ .Int = 4000 });
 
-    var f = Field{ .Arr = arr };
+    var f = Record{ .Arr = arr };
     try test_arr(&f);
 }
 
@@ -371,13 +371,13 @@ test "bool array encode-decode" {
 
     var arr = try Array.init(.Bool, alloc, 5);
 
-    try arr.append(Field{ .Bool = true });
-    try arr.append(Field{ .Bool = true });
-    try arr.append(Field{ .Bool = false });
-    try arr.append(Field{ .Bool = true });
-    try arr.append(Field{ .Bool = false });
+    try arr.append(Record{ .Bool = true });
+    try arr.append(Record{ .Bool = true });
+    try arr.append(Record{ .Bool = false });
+    try arr.append(Record{ .Bool = true });
+    try arr.append(Record{ .Bool = false });
 
-    var f = Field{ .Arr = arr };
+    var f = Record{ .Arr = arr };
     try test_arr(&f);
 }
 
@@ -386,13 +386,13 @@ test "float array encode-decode" {
 
     var arr = try Array.init(.Float, alloc, 5);
 
-    try arr.append(Field{ .Float = 4.0 });
-    try arr.append(Field{ .Float = -134.0 });
-    try arr.append(Field{ .Float = std.math.pi });
-    try arr.append(Field{ .Float = std.math.e });
-    try arr.append(Field{ .Float = @sqrt(2.0) });
+    try arr.append(Record{ .Float = 4.0 });
+    try arr.append(Record{ .Float = -134.0 });
+    try arr.append(Record{ .Float = std.math.pi });
+    try arr.append(Record{ .Float = std.math.e });
+    try arr.append(Record{ .Float = @sqrt(2.0) });
 
-    var f = Field{ .Arr = arr };
+    var f = Record{ .Arr = arr };
     try test_arr(&f);
 }
 test "char array encode-decode" {
@@ -400,13 +400,13 @@ test "char array encode-decode" {
 
     var arr = try Array.init(.Char, alloc, 5);
 
-    try arr.append(Field{ .Char = 'H' });
-    try arr.append(Field{ .Char = 'E' });
-    try arr.append(Field{ .Char = 'L' });
-    try arr.append(Field{ .Char = 'L' });
-    try arr.append(Field{ .Char = 'O' });
+    try arr.append(Record{ .Char = 'H' });
+    try arr.append(Record{ .Char = 'E' });
+    try arr.append(Record{ .Char = 'L' });
+    try arr.append(Record{ .Char = 'L' });
+    try arr.append(Record{ .Char = 'O' });
 
-    var f = Field{ .Arr = arr };
+    var f = Record{ .Arr = arr };
     try test_arr(&f);
 }
 
@@ -415,13 +415,13 @@ test "oid array encode-decode" {
 
     var arr = try Array.init(.OID, alloc, 5);
 
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
 
-    var f = Field{ .Arr = arr };
+    var f = Record{ .Arr = arr };
     try test_arr(&f);
 }
 
@@ -430,10 +430,10 @@ test "array encode-decode, less than max items" {
 
     var arr = try Array.init(.OID, alloc, 5);
 
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
-    try arr.append(Field{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
+    try arr.append(Record{ .OID = std.math.maxInt(u64) });
 
-    var f = Field{ .Arr = arr };
+    var f = Record{ .Arr = arr };
     try test_arr(&f);
 }

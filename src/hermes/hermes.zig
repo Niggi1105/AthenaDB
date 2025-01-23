@@ -1,6 +1,6 @@
 pub const request = @import("request.zig");
 pub const response = @import("response.zig");
-pub const field = @import("field.zig");
+pub const record = @import("record.zig");
 const std = @import("std");
 
 pub const Version = packed struct {

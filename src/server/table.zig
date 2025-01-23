@@ -24,7 +24,6 @@ pub const Table = struct {
     pub fn create(alloc: Allocator, id: u64) !Table {
         const entries = ArrayList(Field).init(alloc);
         const field_names = ArrayList([]u8).init(alloc);
-        try field_names.append("_oid");
 
         return .{ .entries = entries, .id = id, .field_names = field_names, .alloc = alloc };
     }

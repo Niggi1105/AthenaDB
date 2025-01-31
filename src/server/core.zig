@@ -1,5 +1,6 @@
 const std = @import("std");
 const hermes = @import("hermes");
+const log = std.log;
 const Response = hermes.response.Response;
 const Request = hermes.request.Request;
 const Allocator = std.mem.Allocator;
@@ -23,16 +24,20 @@ pub const AthenaCore = struct {
     const Self = @This();
 
     fn handle_get_req(self: *Self, rq: Request) !Response {
+        log.info("got get request...", .{});
         const file = try self.base_dir.createFile(&std.mem.toBytes(rq.header.key), .{});
         try file.lock(.exclusive);
         const content = try file.readToEndAlloc(self.alloc, std.math.maxInt(usize));
+        log.info("sending get response...", .{});
         return Response.ok(content, self.alloc, 0);
     }
     fn handle_put_req(self: *Self, rq: Request) !Response {
+        log.info("got put request...", .{});
         const key: u32 = generate_key();
         const file = try self.base_dir.createFile(&std.mem.toBytes(key), .{});
         try file.lock(.exclusive);
         try file.writeAll(rq.body);
+        log.info("sending put response...", .{});
         return Response.ok(&[_]u8{}, self.alloc, key);
     }
 

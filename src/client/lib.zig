@@ -45,5 +45,7 @@ test {
     const rsp2 = try client.get(rsp.header.key);
     defer rsp2.deinit();
 
-    try std.testing.expectEqualSlices(u8, rsp2.body, &slice);
+    unreachable;
+
+    //try std.testing.expectEqualSlices(u8, rsp2.body, &slice);
 }

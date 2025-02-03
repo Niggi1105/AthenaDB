@@ -18,14 +18,14 @@ pub const ResponseHeader = packed struct {
 
 pub const Response = struct {
     header: ResponseHeader,
-    body: []u8,
+    body: []const u8,
     alloc: Allocator,
 
-    pub fn ok(content: []u8, alloc: Allocator, key: u32) Response {
+    pub fn ok(content: []const u8, alloc: Allocator, key: u32) Response {
         return .{ .header = .{ .len = content.len, .code = .Ok, .key = key }, .body = content, .alloc = alloc };
     }
 
-    pub fn err(error_msg: []u8, alloc: Allocator) Response {
+    pub fn err(error_msg: []const u8, alloc: Allocator) Response {
         return .{ .header = .{ .len = error_msg.len, .code = .Error, .key = 0 }, .body = error_msg, .alloc = alloc };
     }
 

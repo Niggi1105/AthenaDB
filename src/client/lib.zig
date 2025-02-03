@@ -29,7 +29,9 @@ pub const Client = struct {
         return rsp;
     }
 
-    pub fn disconnect(self: Client) void {
+    pub fn disconnect(self: Client) !void {
+        const rq = Request.dissconnect(self.alloc);
+        try rq.encode(self.stream.writer());
         self.stream.close();
     }
 };
@@ -38,14 +40,14 @@ test {
     std.testing.refAllDecls(@This());
     const alloc = std.testing.allocator;
     const client = try Client.connect(alloc, std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 3000));
-    const data = "Hello World";
-    var slice = std.mem.toBytes(data);
+    const data = "Hello World!!";
+    var slice = std.mem.toBytes(data.*);
     const rsp = try client.put(&slice);
     defer rsp.deinit();
     const rsp2 = try client.get(rsp.header.key);
     defer rsp2.deinit();
+    try client.disconnect();
 
-    unreachable;
-
-    //try std.testing.expectEqualSlices(u8, rsp2.body, &slice);
+    try std.testing.expect(rsp2.header.code == .Ok);
+    try std.testing.expectEqualSlices(u8, &slice, rsp2.body);
 }

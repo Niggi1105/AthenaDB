@@ -41,6 +41,7 @@ pub const AthenaCore = struct {
 
         return Response.ok(content, self.alloc, 0);
     }
+
     fn handle_put_req(self: *Self, rq: Request) !Response {
         log.debug("got put request...", .{});
 
@@ -58,6 +59,23 @@ pub const AthenaCore = struct {
 
         log.debug("sending put response...", .{});
         return Response.ok(&[_]u8{}, self.alloc, key);
+    }
+
+    fn handle_delete_req(self: *Self, rq: Request) !Response {
+        log.debug("got delete request...", .{});
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        var buf = ArrayList(u8).init(self.alloc);
+        defer buf.deinit();
+        try std.fmt.formatInt(rq.header.key, 10, .lower, .{}, buf.writer());
+
+        try self.base_dir.deleteFile(buf.items);
+
+        log.debug("sending delete response...", .{});
+
+        return Response.ok(&[_]u8{}, self.alloc, 0);
     }
 
     fn return_err(e: anyerror, conn: std.net.Server.Connection, alloc: Allocator) !void {
@@ -84,6 +102,7 @@ pub const AthenaCore = struct {
             const rsp = switch (rq.header.method) {
                 .Get => self.handle_get_req(rq) catch unreachable,
                 .Put => self.handle_put_req(rq) catch unreachable,
+                .Delete => self.handle_delete_req(rq) catch unreachable,
                 .Disconnect => return,
             };
 

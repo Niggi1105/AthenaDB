@@ -6,7 +6,8 @@ const version = @import("hermes.zig").version;
 pub const RequestMethod = enum(u8) {
     Get = 1,
     Put = 2,
-    Disconnect = 3,
+    Delete = 3,
+    Disconnect = 4,
 };
 
 pub const RequestHeader = packed struct { //64
@@ -26,6 +27,9 @@ pub const Request = struct {
     }
     pub fn get(key: u32, alloc: Allocator) Request {
         return .{ .header = .{ .method = .Get, .len = 0, .key = key }, .body = &[_]u8{}, .alloc = alloc };
+    }
+    pub fn delete(key: u32, alloc: Allocator) Request {
+        return .{ .header = .{ .method = .Delete, .len = 0, .key = key }, .body = &[_]u8{}, .alloc = alloc };
     }
     pub fn dissconnect(alloc: Allocator) Request {
         return .{ .header = .{ .method = .Disconnect, .len = 0, .key = 0 }, .body = &[_]u8{}, .alloc = alloc };
